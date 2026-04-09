@@ -296,7 +296,7 @@ html, body {
 #style-drawer {
   position: fixed;
   top: 0; right: 0;
-  width: 400x;
+  width: 360px;
   height: 100%;
   background: #fff;
   box-shadow: -4px 0 20px rgba(0,0,0,.18);
@@ -381,11 +381,47 @@ input[type=checkbox].style-input {
 }
 select.style-input { cursor: pointer; }
 
-/* ── Simple-mode placeholder ─────────────────────────────────────────────── */
-.simple-hint {
-  font-size: 11px; color: #999; text-align: center;
-  padding: 20px 10px; line-height: 1.6;
+/* ── Style Tabs ──────────────────────────────────────────────────────────── */
+#style-tabs {
+  display: flex;
+  border-bottom: 2px solid #e0e6ef;
+  background: #f8fafd;
+  flex-shrink: 0;
 }
+.style-tab {
+  flex: 1; padding: 9px 6px; border: none; background: none;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  color: #8a9ab5; border-bottom: 2px solid transparent;
+  margin-bottom: -2px; transition: color .15s, border-color .15s;
+  font-family: inherit;
+}
+.style-tab:hover { color: #2E75B6; }
+.style-tab.active { color: #2E75B6; border-bottom-color: #2E75B6; }
+
+/* ── Subsection ──────────────────────────────────────────────────────────── */
+.style-subsection { margin-bottom: 4px; }
+.style-subsection-title {
+  font-size: 11px; font-weight: 700; color: #44546A;
+  margin: 8px 0 4px; padding-left: 2px;
+  display: flex; align-items: center; gap: 4px;
+}
+.style-subsection-title::before {
+  content: ''; display: inline-block;
+  width: 3px; height: 11px; background: #2E75B6;
+  border-radius: 2px; flex-shrink: 0;
+}
+
+/* ── More Toggle ─────────────────────────────────────────────────────────── */
+.more-toggle {
+  display: block; width: 100%;
+  text-align: left; font-size: 11px;
+  color: #2E75B6; background: none; border: none;
+  cursor: pointer; padding: 3px 0 3px 2px;
+  font-family: inherit; user-select: none;
+}
+.more-toggle:hover { text-decoration: underline; }
+.more-content { display: none; }
+.more-content.open { display: block; }
 
 /* ── Theme bar ───────────────────────────────────────────────────────────── */
 #theme-bar {
@@ -459,7 +495,7 @@ select.style-input { cursor: pointer; }
     </label>
     <label class="ctrl-label">
       <input type="checkbox" id="chk-bullet" checked>
-      불릿 기호 포함 (미 체크시 들여쓰기로 구분)
+      글머리 기호 포함 (미 체크시 들여쓰기로 구분)
     </label>
     <div class="spacer"></div>
     <button class="btn btn-ghost" id="btn-style-toggle">◧ 스타일 설정</button>
@@ -519,7 +555,6 @@ select.style-input { cursor: pointer; }
       <span class="drawer-title">스타일 설정</span>
       <div class="drawer-actions">
         <button class="btn-drawer btn-apply" id="btn-apply-style">▶ 적용</button>
-        <button class="btn-drawer" id="btn-mode">⚙ 세부 설정</button>
         <button class="btn-drawer" id="btn-reset">초기화</button>
         <button class="btn-drawer btn-close" id="btn-style-close">✕</button>
       </div>
@@ -528,6 +563,11 @@ select.style-input { cursor: pointer; }
     <div id="theme-bar">
       <div id="theme-bar-label">빠른 테마 선택</div>
       <div id="theme-cards"></div>
+    </div>
+    <!-- 탭 -->
+    <div id="style-tabs">
+      <button class="style-tab active" data-tab="text">글 서식</button>
+      <button class="style-tab" data-tab="page">페이지 서식</button>
     </div>
     <div id="style-body"></div>
   </div>
@@ -551,13 +591,13 @@ const DEFAULT_CONFIG = {
   paragraph: { space_after: 120, line_spacing: 1.15 },
   code_block:  { font_name: 'Consolas', font_size: 9, background_color: 'F2F2F2', font_color: '333333', space_before: 80, space_after: 80 },
   inline_code: { font_name: 'Consolas', font_size: 9, background_color: 'F2F2F2', font_color: 'C7254E' },
+  hyperlink:   { font_color: '0056D6', underline: true },
   table_header: { background_color: '2E75B6', font_color: 'FFFFFF', bold: true },
   table_row_alt: { background_color: 'EBF3FB' },
   margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
 };
 
 const LS_KEY           = 'md2docx_style_v2';
-const LS_MODE_KEY      = 'md2docx_stylemode';
 const LS_BULLET_KEY    = 'md2docx_bullet';
 const LS_HYPERLINK_KEY = 'md2docx_hyperlink';
 
@@ -613,7 +653,6 @@ const btnPreview    = document.getElementById('btn-preview');
 const btnConvert    = document.getElementById('btn-convert');
 const btnDlMerm     = document.getElementById('btn-dl-mermaid');
 const btnReset      = document.getElementById('btn-reset');
-const btnMode       = document.getElementById('btn-mode');
 const btnApply      = document.getElementById('btn-apply-style');
 const btnStyleToggle = document.getElementById('btn-style-toggle');
 const btnStyleClose  = document.getElementById('btn-style-close');
@@ -749,8 +788,6 @@ async function triggerPreview() {
     }
     const data = await res.json();
     previewBody.innerHTML = renderTokens(data.tokens || []);
-    // 간편 모드라면 사용된 서식 기반으로 스타일 에디터 갱신
-    if (styleMode === 'simple') renderStyleEditor();
   } catch (e) {
     showError('미리보기 실패: ' + e.message);
   }
@@ -928,81 +965,6 @@ function renderTokens(tokens) {
   return tokens.map(renderBlock).join('') || '<div class="empty-state">미리볼 내용이 없습니다.</div>';
 }
 
-// ── Markdown format detection (간편 모드용) ────────────────────────────────
-function detectUsedFormats(md) {
-  const used = new Set();
-  used.add('paragraph'); // 항상 포함
-
-  // Headings H1~H6
-  for (let i = 1; i <= 6; i++) {
-    if (new RegExp(`^#{${i}}[^#]`, 'm').test(md)) used.add(`heading${i}`);
-  }
-
-  // Tables
-  if (/^\|.+\|/m.test(md)) used.add('table');
-
-  // Code blocks (``` ... ```)
-  if (/^```/m.test(md)) used.add('code_block');
-
-  // Mermaid diagrams
-  if (/^```\s*mermaid/im.test(md)) used.add('mermaid');
-
-  // Blockquotes
-  if (/^>/m.test(md)) used.add('blockquote');
-
-  return used;
-}
-
-// SIMPLE_PATHS는 실행 시마다 감지된 서식 기반으로 계산
-function getSimplePaths() {
-  const md = mdInput.value;
-  const used = detectUsedFormats(md);
-
-  const paths = new Set([
-    'page_size', 'font_name', 'font_size_body',
-    'paragraph.space_after', 'paragraph.line_spacing',
-    'margin.top', 'margin.bottom', 'margin.left', 'margin.right',
-  ]);
-
-  for (let i = 1; i <= 6; i++) {
-    if (used.has(`heading${i}`)) {
-      paths.add(`heading${i}.font_size`);
-      paths.add(`heading${i}.bold`);
-      paths.add(`heading${i}.color`);
-      paths.add(`heading${i}.space_before`);
-      paths.add(`heading${i}.space_after`);
-    }
-  }
-
-  if (used.has('table')) {
-    paths.add('table_header.background_color');
-    paths.add('table_header.font_color');
-    paths.add('table_header.bold');
-    paths.add('table_row_alt.background_color');
-  }
-
-  if (used.has('code_block')) {
-    paths.add('code_block.font_name');
-    paths.add('code_block.font_size');
-    paths.add('code_block.font_color');
-    paths.add('code_block.background_color');
-    paths.add('code_block.space_before');
-    paths.add('code_block.space_after');
-  }
-
-  // 인라인 코드가 있을 때 (단일 백틱)
-  if (/`[^`\n]+`/.test(md)) {
-    paths.add('inline_code.font_name');
-    paths.add('inline_code.font_size');
-    paths.add('inline_code.font_color');
-    paths.add('inline_code.background_color');
-  }
-
-  return paths;
-}
-
-// ── Style config editor ────────────────────────────────────────────────────
-
 // ── Theme presets ──────────────────────────────────────────────────────────
 const THEMES = {
   navy: {
@@ -1105,22 +1067,6 @@ function renderThemeBar() {
   });
 }
 
-const KO_SECTION = {
-  __page:        '문서',
-  heading1:      '제목 1 (H1)',
-  heading2:      '제목 2 (H2)',
-  heading3:      '제목 3 (H3)',
-  heading4:      '제목 4 (H4)',
-  heading5:      '제목 5 (H5)',
-  heading6:      '제목 6 (H6)',
-  paragraph:     '본문 단락',
-  code_block:    '코드 블록 (```)',
-  inline_code:   '인라인 코드 (`)',
-  table_header:  '표 헤더',
-  table_row_alt: '표 행 (교차)',
-  margin:        '페이지 여백',
-};
-
 const KO_FIELD = {
   page_size:        '페이지 크기',
   font_name:        '폰트',
@@ -1129,6 +1075,7 @@ const KO_FIELD = {
   bold:             '굵게 (Bold)',
   color:            '글자색',
   font_color:       '글자색',
+  underline:        '밑줄',
   space_before:     '단락 앞 간격',
   space_after:      '단락 뒤 간격',
   line_spacing:     '줄 간격',
@@ -1139,19 +1086,8 @@ const KO_FIELD = {
   right:            '오른쪽',
 };
 
-let styleMode = (() => {
-  try { return localStorage.getItem(LS_MODE_KEY) || 'simple'; } catch (_) { return 'simple'; }
-})();
-
-function saveModePreference() {
-  try { localStorage.setItem(LS_MODE_KEY, styleMode); } catch (_) {}
-}
-
 function formatLabel(key) {
   return KO_FIELD[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-function sectionLabel(key) {
-  return KO_SECTION[key] || formatLabel(key);
 }
 function isColorKey(key) { return key.includes('color'); }
 function toHtmlColor(hex) { return '#' + String(hex).replace('#', '').padStart(6, '0'); }
@@ -1196,53 +1132,178 @@ function buildField(path, key, value) {
     <input id="${id}" type="text" class="style-input" data-path="${path}" value="${esc(String(value))}"></div>`;
 }
 
-function buildStyleEditor(cfg) {
-  const simple = styleMode === 'simple';
-  const simplePaths = simple ? getSimplePaths() : null;
+// ── Style config editor ────────────────────────────────────────────────────
 
-  // Group top-level scalars → __page, nested objects → their own section
-  const grouped = {};
-  for (const [key, val] of Object.entries(cfg)) {
-    if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-      grouped[key] = { _fields: val };
-    } else {
-      if (!grouped.__page) grouped.__page = { _fields: {} };
-      grouped.__page._fields[key] = val;
-    }
+let activeStyleTab = (() => {
+  try { return localStorage.getItem('md2docx_tab') || 'text'; } catch(_) { return 'text'; }
+})();
+
+function saveTabPref(t) {
+  try { localStorage.setItem('md2docx_tab', t); } catch(_) {}
+}
+
+function getFieldVal(cfg, path) {
+  return path.split('.').reduce((o, k) => (o != null ? o[k] : undefined), cfg);
+}
+
+function makeFields(cfg, section, keys) {
+  return keys.map(key => {
+    const path = section ? `${section}.${key}` : key;
+    return { path, key, val: getFieldVal(cfg, path) };
+  });
+}
+
+function buildSubSection(id, title, primaryFields, moreFields) {
+  let html = '<div class="style-subsection">';
+  if (title) html += `<div class="style-subsection-title">${title}</div>`;
+  html += primaryFields.map(f => buildField(f.path, f.key, f.val)).join('');
+  if (moreFields.length) {
+    html += `<button class="more-toggle" data-target="more_${id}">＋ 더보기</button>`;
+    html += `<div class="more-content" id="more_${id}">`;
+    html += moreFields.map(f => buildField(f.path, f.key, f.val)).join('');
+    html += '</div>';
   }
+  html += '</div>';
+  return html;
+}
 
+function buildSection(title, content) {
+  return `<div class="style-section"><div class="style-section-title">${title}</div>${content}</div>`;
+}
+
+function buildHeadingSection(cfg, level) {
+  const s = `heading${level}`;
+  const primary = makeFields(cfg, s, ['font_size', 'color']);
+  const more    = makeFields(cfg, s, ['bold', 'space_before', 'space_after']);
+  return buildSubSection(s, `H${level}`, primary, more);
+}
+
+function buildTextTab(cfg) {
   let html = '';
-  for (const [sectionKey, sectionObj] of Object.entries(grouped)) {
-    const label = sectionLabel(sectionKey);
-    let fieldsHtml = '';
-    for (const [fkey, fval] of Object.entries(sectionObj._fields)) {
-      const path = sectionKey === '__page' ? fkey : `${sectionKey}.${fkey}`;
-      if (simple && !simplePaths.has(path)) continue;
-      fieldsHtml += buildField(path, fkey, fval);
-    }
-    if (!fieldsHtml) continue;
-    html += `<div class="style-section"><div class="style-section-title">${label}</div>${fieldsHtml}</div>`;
-  }
 
-  if (!html && simple) {
-    html = '<div class="simple-hint">마크다운 내용을 입력하면<br>사용된 서식에 맞는 설정이 표시됩니다.</div>';
-  }
+  // 본문 서식
+  html += buildSection('본문 서식',
+    buildSubSection('body', null,
+      makeFields(cfg, null, ['font_size_body', 'font_name']),
+      []
+    )
+  );
+
+  // 제목 서식
+  let headHtml = '';
+  for (let i = 1; i <= 4; i++) headHtml += buildHeadingSection(cfg, i);
+  let h56Html = '';
+  for (let i = 5; i <= 6; i++) h56Html += buildHeadingSection(cfg, i);
+  headHtml += `<button class="more-toggle" data-target="more_h56">＋ H5~H6 더보기</button>
+    <div class="more-content" id="more_h56">${h56Html}</div>`;
+  html += buildSection('제목 서식', headHtml);
+
+  // 코드 블록
+  html += buildSection('코드 블록 (```)',
+    buildSubSection('code_block', null,
+      makeFields(cfg, 'code_block', ['font_color', 'background_color']),
+      makeFields(cfg, 'code_block', ['font_name', 'font_size', 'space_before', 'space_after'])
+    )
+  );
+
+  // 인라인 코드
+  html += buildSection('인라인 코드 (`)',
+    buildSubSection('inline_code', null,
+      makeFields(cfg, 'inline_code', ['font_color', 'background_color']),
+      makeFields(cfg, 'inline_code', ['font_name', 'font_size'])
+    )
+  );
+
+  // 표 서식
+  const tableHtml =
+    buildSubSection('table_header', '표 헤더',
+      makeFields(cfg, 'table_header', ['background_color', 'font_color']),
+      makeFields(cfg, 'table_header', ['bold'])
+    ) +
+    buildSubSection('table_row_alt', '표 행 (교차)',
+      makeFields(cfg, 'table_row_alt', ['background_color']),
+      []
+    );
+  html += buildSection('표 서식', tableHtml);
+
+  // 하이퍼링크 서식
+  html += buildSection('하이퍼링크 서식',
+    buildSubSection('hyperlink', null,
+      makeFields(cfg, 'hyperlink', ['font_color', 'underline']),
+      []
+    )
+  );
 
   return html;
 }
 
-function updateModeButton() {
-  btnMode.textContent = styleMode === 'simple' ? '⚙ 세부 설정' : '← 간편 설정';
+function buildPageTab(cfg) {
+  let html = '';
+
+  // 페이지 설정
+  html += buildSection('페이지 설정',
+    buildSubSection('page', null,
+      makeFields(cfg, null, ['page_size']),
+      []
+    )
+  );
+
+  // 페이지 여백
+  html += buildSection('페이지 여백',
+    buildSubSection('margin', null,
+      makeFields(cfg, 'margin', ['top', 'bottom']),
+      makeFields(cfg, 'margin', ['left', 'right'])
+    )
+  );
+
+  // 단락 간격
+  html += buildSection('본문 단락 간격',
+    buildSubSection('paragraph', null,
+      makeFields(cfg, 'paragraph', ['space_after', 'line_spacing']),
+      []
+    )
+  );
+
+  return html;
 }
 
 function renderStyleEditor() {
-  styleBody.innerHTML = buildStyleEditor(currentConfig);
+  // Sync tab button active state
+  document.querySelectorAll('.style-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === activeStyleTab);
+  });
+
+  styleBody.innerHTML = activeStyleTab === 'text'
+    ? buildTextTab(currentConfig)
+    : buildPageTab(currentConfig);
+
+  // Wire inputs
   styleBody.querySelectorAll('.style-input').forEach(el => {
     el.addEventListener('change', onStyleChange);
     if (el.type === 'color') el.addEventListener('input', onStyleChange);
   });
-  updateModeButton();
+
+  // Wire more-toggles
+  styleBody.querySelectorAll('.more-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      const open = target.classList.toggle('open');
+      btn.textContent = open
+        ? btn.textContent.replace('＋', '－')
+        : btn.textContent.replace('－', '＋');
+    });
+  });
 }
+
+// Tab switching
+document.querySelectorAll('.style-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeStyleTab = btn.dataset.tab;
+    saveTabPref(activeStyleTab);
+    renderStyleEditor();
+  });
+});
 
 function getNestedRef(obj, path) {
   const parts = path.split('.');
@@ -1263,12 +1324,6 @@ function onStyleChange(e) {
   else                             obj[key] = el.value;
   saveConfig(currentConfig);
 }
-
-btnMode.addEventListener('click', () => {
-  styleMode = styleMode === 'simple' ? 'advanced' : 'simple';
-  saveModePreference();
-  renderStyleEditor();
-});
 
 btnReset.addEventListener('click', () => {
   if (!confirm('모든 스타일 설정을 기본값으로 초기화하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
@@ -1310,12 +1365,28 @@ function applyStyleToPreview() {
   css += `#preview-body pre {`;
   if (cb.background_color) css += ` background: ${c(cb.background_color)};`;
   css += ' }\n';
-  if (cb.font_name || cb.font_size) {
-    css += `#preview-body pre code {`;
-    if (cb.font_name) css += ` font-family: '${cb.font_name}', 'Consolas', monospace;`;
-    if (cb.font_size) css += ` font-size: ${cb.font_size}pt;`;
-    css += ' }\n';
-  }
+  css += `#preview-body pre code {`;
+  if (cb.font_name)   css += ` font-family: '${cb.font_name}', 'Consolas', monospace;`;
+  if (cb.font_size)   css += ` font-size: ${cb.font_size}pt;`;
+  if (cb.font_color)  css += ` color: ${c(cb.font_color)};`;
+  css += ' }\n';
+
+  // Inline code
+  const ic = cfg.inline_code || {};
+  css += `#preview-body code {`;
+  if (ic.font_color)        css += ` color: ${c(ic.font_color)};`;
+  if (ic.background_color)  css += ` background: ${c(ic.background_color)};`;
+  if (ic.font_name)         css += ` font-family: '${ic.font_name}', 'Consolas', monospace;`;
+  if (ic.font_size)         css += ` font-size: ${ic.font_size}pt;`;
+  css += ' }\n';
+
+  // Hyperlink
+  const hl = cfg.hyperlink || {};
+  css += `#preview-body a.preview-link {`;
+  if (hl.font_color) css += ` color: ${c(hl.font_color)};`;
+  if (typeof hl.underline === 'boolean')
+    css += ` text-decoration: ${hl.underline ? 'underline' : 'none'};`;
+  css += ' }\n';
 
   // Table header
   const th = cfg.table_header || {};

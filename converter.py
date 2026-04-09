@@ -73,7 +73,7 @@ def _outline_level(para, level: int):
     pPr.append(el)
 
 
-def _add_hyperlink(para, text: str, url: str):
+def _add_hyperlink(para, text: str, url: str, font_color: str = "0056D6", underline: bool = True):
     """Embed a proper hyperlink relationship in the paragraph."""
     try:
         r_id = para.part.relate_to(
@@ -85,9 +85,13 @@ def _add_hyperlink(para, text: str, url: str):
         hl.set(qn("r:id"), r_id)
         r = OxmlElement("w:r")
         rPr = OxmlElement("w:rPr")
-        rStyle = OxmlElement("w:rStyle")
-        rStyle.set(qn("w:val"), "Hyperlink")
-        rPr.append(rStyle)
+        color_el = OxmlElement("w:color")
+        color_el.set(qn("w:val"), font_color.lstrip("#").upper())
+        rPr.append(color_el)
+        if underline:
+            u_el = OxmlElement("w:u")
+            u_el.set(qn("w:val"), "single")
+            rPr.append(u_el)
         r.append(rPr)
         t = OxmlElement("w:t")
         t.text = text
@@ -684,7 +688,10 @@ class DocxConverter:
                 url       = (tok.get("attrs") or {}).get("url", "")
                 link_text = extract_text(tok.get("children", [])) or url
                 if self.style.get("include_hyperlink", True):
-                    _add_hyperlink(para, link_text, url)
+                    hl_style = self.style.get("hyperlink", {})
+                    _add_hyperlink(para, link_text, url,
+                                   font_color=hl_style.get("font_color", "0056D6"),
+                                   underline=hl_style.get("underline", True))
                 else:
                     run = para.add_run(link_text)
                     _set_font(run, fn)
@@ -746,6 +753,7 @@ DEFAULT_STYLE: Dict = {
     "paragraph": {"space_after": 120, "line_spacing": 1.15},
     "code_block":  {"font_name": "Consolas", "font_size": 9, "background_color": "F2F2F2", "font_color": "333333", "space_before": 80, "space_after": 80},
     "inline_code": {"font_name": "Consolas", "font_size": 9, "background_color": "F2F2F2", "font_color": "C7254E"},
+    "hyperlink":   {"font_color": "0056D6", "underline": True},
     "table_header": {"background_color": "2E75B6", "font_color": "FFFFFF", "bold": True},
     "table_row_alt": {"background_color": "EBF3FB"},
     "margin": {"top": 1440, "bottom": 1440, "left": 1440, "right": 1440},

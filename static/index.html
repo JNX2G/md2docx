@@ -352,8 +352,8 @@ html, body {
   width: 100%; padding: 7px 10px;
   background: #eef2fa; border: none; border-radius: 5px;
   cursor: pointer; font-family: inherit;
-  font-size: 11px; font-weight: 700; color: #1F3864;
-  text-transform: uppercase; letter-spacing: .5px;
+  font-size: 13px; font-weight: 700; color: #1F3864;
+  letter-spacing: .2px;
   transition: background .15s;
 }
 .section-toggle:hover { background: #dde6f5; }
@@ -414,10 +414,15 @@ select.style-input { cursor: pointer; }
 .style-tab.active { color: #2E75B6; border-bottom-color: #2E75B6; }
 
 /* ── Subsection ──────────────────────────────────────────────────────────── */
-.style-subsection { margin-bottom: 4px; }
+.style-subsection {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eef0f4;
+}
+.style-subsection:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 .style-subsection-title {
-  font-size: 11px; font-weight: 700; color: #44546A;
-  margin: 8px 0 4px; padding-left: 2px;
+  font-size: 12px; font-weight: 700; color: #44546A;
+  margin: 0 0 6px; padding-left: 2px;
   display: flex; align-items: center; gap: 4px;
 }
 .style-subsection-title::before {
@@ -1209,16 +1214,19 @@ function buildTextTab(cfg) {
     )
   );
 
-  // 2. 제목 서식 — 더보기 없음, H1~H6 전체 표시
+  // 2. 제목 서식 — H1~H4 기본, H5~H6 더보기
   let headHtml = '';
-  for (let i = 1; i <= 6; i++) headHtml += buildHeadingSection(cfg, i);
+  for (let i = 1; i <= 4; i++) headHtml += buildHeadingSection(cfg, i);
+  let h56Html = '';
+  for (let i = 5; i <= 6; i++) h56Html += buildHeadingSection(cfg, i);
+  headHtml += `<button class="more-toggle" data-target="more_h56">＋ H5~H6 더보기</button><div class="more-content" id="more_h56">${h56Html}</div>`;
   html += buildSection('headings', '제목 서식', headHtml);
 
   // 3. 표 서식
   const tableHtml =
     buildSubSection('table_header', '표 헤더',
-      makeFields(cfg, 'table_header', ['background_color', 'font_color']),
-      makeFields(cfg, 'table_header', ['bold'])
+      makeFields(cfg, 'table_header', ['background_color', 'font_color', 'bold']),
+      []
     ) +
     buildSubSection('table_row_alt', '표 행 (교차)',
       makeFields(cfg, 'table_row_alt', ['background_color']),
@@ -1227,18 +1235,18 @@ function buildTextTab(cfg) {
   html += buildSection('table', '표 서식', tableHtml);
 
   // 4. 코드 블록
-  html += buildSection('code_block', '코드 블록 (```)',
+  html += buildSection('code_block', '코드 블록',
     buildSubSection('code_block', null,
-      makeFields(cfg, 'code_block', ['font_color', 'background_color']),
-      makeFields(cfg, 'code_block', ['font_name', 'font_size', 'space_before', 'space_after'])
+      makeFields(cfg, 'code_block', ['font_color', 'background_color', 'font_name', 'font_size', 'space_before', 'space_after']),
+      []
     )
   );
 
   // 5. 인라인 코드
-  html += buildSection('inline_code', '인라인 코드 (`)',
+  html += buildSection('inline_code', '인라인 코드',
     buildSubSection('inline_code', null,
-      makeFields(cfg, 'inline_code', ['font_color', 'background_color']),
-      makeFields(cfg, 'inline_code', ['font_name', 'font_size'])
+      makeFields(cfg, 'inline_code', ['font_color', 'background_color', 'font_name', 'font_size']),
+      []
     )
   );
 

@@ -582,7 +582,7 @@ select.style-input { cursor: pointer; }
     <!-- 탭 -->
     <div id="style-tabs">
       <button class="style-tab active" data-tab="text">글 서식</button>
-      <button class="style-tab" data-tab="page">페이지 서식</button>
+      <button class="style-tab" data-tab="page">단락 및 페이지 설정</button>
     </div>
     <div id="style-body"></div>
   </div>
@@ -1183,8 +1183,13 @@ function buildSection(id, title, content) {
 
 function buildHeadingSection(cfg, level) {
   const s = `heading${level}`;
-  // 제목은 더보기 없이 모든 필드 표시
-  const fields = makeFields(cfg, s, ['font_size', 'color', 'bold', 'space_before', 'space_after']);
+  const fields = makeFields(cfg, s, ['font_size', 'color', 'bold']);
+  return buildSubSection(s, `H${level}`, fields, []);
+}
+
+function buildHeadingSpacingSection(cfg, level) {
+  const s = `heading${level}`;
+  const fields = makeFields(cfg, s, ['space_before', 'space_after']);
   return buildSubSection(s, `H${level}`, fields, []);
 }
 
@@ -1222,7 +1227,7 @@ function buildTextTab(cfg) {
   // 4. 코드 블록
   html += buildSection('code_block', '코드 블록',
     buildSubSection('code_block', null,
-      makeFields(cfg, 'code_block', ['font_color', 'background_color', 'font_name', 'font_size', 'space_before', 'space_after']),
+      makeFields(cfg, 'code_block', ['font_color', 'background_color', 'font_name', 'font_size']),
       []
     )
   );
@@ -1249,6 +1254,33 @@ function buildTextTab(cfg) {
 function buildPageTab(cfg) {
   let html = '';
 
+  // 본문 단락 간격
+  html += buildSection('paragraph', '본문 단락 간격',
+    buildSubSection('paragraph', null,
+      makeFields(cfg, 'paragraph', ['space_after', 'line_spacing']),
+      []
+    )
+  );
+
+  // 제목 단락 간격 — H1~H4 기본, H5~H6 더보기
+  let headSpacingHtml = '';
+  for (let i = 1; i <= 4; i++) headSpacingHtml += buildHeadingSpacingSection(cfg, i);
+  let h56SpacingHtml = '';
+  for (let i = 5; i <= 6; i++) h56SpacingHtml += buildHeadingSpacingSection(cfg, i);
+  headSpacingHtml += `<button class="more-toggle" data-target="more_h56_spacing">＋ H5~H6 더보기</button><div class="more-content" id="more_h56_spacing">${h56SpacingHtml}</div>`;
+  html += buildSection('heading_spacing', '제목 단락 간격', headSpacingHtml);
+
+  // 코드 블록 단락 간격
+  html += buildSection('code_block_spacing', '코드 블록 단락 간격',
+    buildSubSection('code_block', null,
+      makeFields(cfg, 'code_block', ['space_before', 'space_after']),
+      []
+    )
+  );
+
+  // 구분선
+  html += '<hr style="border: none; border-top: 1px solid #ddd; margin: 12px 0;">';
+
   // 페이지 설정
   html += buildSection('page', '페이지 설정',
     buildSubSection('page', null,
@@ -1257,18 +1289,10 @@ function buildPageTab(cfg) {
     )
   );
 
-  // 페이지 여백 — 더보기 없음, 4개 모두 표시
+  // 페이지 여백
   html += buildSection('margin', '페이지 여백',
     buildSubSection('margin', null,
       makeFields(cfg, 'margin', ['top', 'bottom', 'left', 'right']),
-      []
-    )
-  );
-
-  // 단락 간격
-  html += buildSection('paragraph', '본문 단락 간격',
-    buildSubSection('paragraph', null,
-      makeFields(cfg, 'paragraph', ['space_after', 'line_spacing']),
       []
     )
   );

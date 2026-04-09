@@ -237,6 +237,7 @@ html, body {
 #preview-body h3:first-child, #preview-body h4:first-child { margin-top: 0; }
 #preview-body p  { margin: .5em 0 .8em; line-height: 1.7; color: #2d2d2d; }
 #preview-body a  { color: #2E75B6; text-decoration: underline; }
+#preview-body a.preview-link { pointer-events: none; cursor: default; }
 #preview-body strong { font-weight: 700; }
 #preview-body em     { font-style: italic; }
 #preview-body del    { text-decoration: line-through; color: #777; }
@@ -453,6 +454,10 @@ select.style-input { cursor: pointer; }
       Mermaid 포함
     </label>
     <label class="ctrl-label">
+      <input type="checkbox" id="chk-hyperlink" checked>
+      하이퍼링크 포함
+    </label>
+    <label class="ctrl-label">
       <input type="checkbox" id="chk-bullet" checked>
       불릿 기호 포함 (미 체크시 들여쓰기로 구분)
     </label>
@@ -544,15 +549,17 @@ const DEFAULT_CONFIG = {
   heading5: { font_size: 11, bold: true,  color: '595959', space_before: 100, space_after: 30  },
   heading6: { font_size: 11, bold: false, color: '7F7F7F', space_before: 80,  space_after: 20  },
   paragraph: { space_after: 120, line_spacing: 1.15 },
-  code_block: { font_name: 'Consolas', font_size: 9, background_color: 'F2F2F2' },
+  code_block:  { font_name: 'Consolas', font_size: 9, background_color: 'F2F2F2', font_color: '333333', space_before: 80, space_after: 80 },
+  inline_code: { font_name: 'Consolas', font_size: 9, background_color: 'F2F2F2', font_color: 'C7254E' },
   table_header: { background_color: '2E75B6', font_color: 'FFFFFF', bold: true },
   table_row_alt: { background_color: 'EBF3FB' },
   margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
 };
 
-const LS_KEY        = 'md2docx_style_v2';
-const LS_MODE_KEY   = 'md2docx_stylemode';
-const LS_BULLET_KEY = 'md2docx_bullet';
+const LS_KEY           = 'md2docx_style_v2';
+const LS_MODE_KEY      = 'md2docx_stylemode';
+const LS_BULLET_KEY    = 'md2docx_bullet';
+const LS_HYPERLINK_KEY = 'md2docx_hyperlink';
 
 function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
 
@@ -588,6 +595,12 @@ function loadBullet() {
 function saveBullet(v) {
   try { localStorage.setItem(LS_BULLET_KEY, v ? 'true' : 'false'); } catch (_) {}
 }
+function loadHyperlink() {
+  try { const v = localStorage.getItem(LS_HYPERLINK_KEY); return v === null ? true : v === 'true'; } catch (_) { return true; }
+}
+function saveHyperlink(v) {
+  try { localStorage.setItem(LS_HYPERLINK_KEY, v ? 'true' : 'false'); } catch (_) {}
+}
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const mdInput       = document.getElementById('md-input');
@@ -610,6 +623,10 @@ const chkMermaid    = document.getElementById('chk-mermaid');
 const chkBullet     = document.getElementById('chk-bullet');
 chkBullet.checked = loadBullet();
 chkBullet.addEventListener('change', () => saveBullet(chkBullet.checked));
+
+const chkHyperlink  = document.getElementById('chk-hyperlink');
+chkHyperlink.checked = loadHyperlink();
+chkHyperlink.addEventListener('change', () => saveHyperlink(chkHyperlink.checked));
 
 const fileInput     = document.getElementById('file-input');
 const progressWrap  = document.getElementById('progress-wrap');
@@ -753,7 +770,7 @@ async function triggerConvert() {
 
   const fd = new FormData();
   fd.append('markdown', md);
-  fd.append('style_config', JSON.stringify({...currentConfig, show_bullet_symbol: chkBullet.checked}));
+  fd.append('style_config', JSON.stringify({...currentConfig, show_bullet_symbol: chkBullet.checked, include_hyperlink: chkHyperlink.checked}));
   fd.append('include_mermaid', chkMermaid.checked ? 'true' : 'false');
 
   try {
@@ -819,7 +836,7 @@ function renderInline(tokens) {
       case 'codespan':      return `<code>${esc(tok.raw || '')}</code>`;
       case 'link': {
         const url = esc((tok.attrs && tok.attrs.url) || '');
-        return `<a href="${url}" target="_blank" rel="noopener">${renderInline(tok.children)}</a>`;
+        return `<a href="${url}" class="preview-link">${renderInline(tok.children)}</a>`;
       }
       case 'image': {
         const alt = esc((tok.attrs && tok.attrs.alt) || '');
@@ -967,7 +984,18 @@ function getSimplePaths() {
   if (used.has('code_block')) {
     paths.add('code_block.font_name');
     paths.add('code_block.font_size');
+    paths.add('code_block.font_color');
     paths.add('code_block.background_color');
+    paths.add('code_block.space_before');
+    paths.add('code_block.space_after');
+  }
+
+  // 인라인 코드가 있을 때 (단일 백틱)
+  if (/`[^`\n]+`/.test(md)) {
+    paths.add('inline_code.font_name');
+    paths.add('inline_code.font_size');
+    paths.add('inline_code.font_color');
+    paths.add('inline_code.background_color');
   }
 
   return paths;
@@ -979,7 +1007,7 @@ function getSimplePaths() {
 const THEMES = {
   navy: {
     name: '클래식 네이비',
-    desc: '전통적인 기업 청색',
+    desc: '기업 문서용',
     swatches: ['1F3864', '2E75B6', '44546A'],
     config: {
       heading1: { font_size: 20, bold: true,  color: '1F3864', space_before: 240, space_after: 120 },
@@ -995,7 +1023,7 @@ const THEMES = {
   },
   mono: {
     name: '모노크롬',
-    desc: '격식 있는 흑백 인쇄용',
+    desc: '흑백 인쇄용',
     swatches: ['1A1A1A', '3A3A3A', '2C2C2C'],
     config: {
       heading1: { font_size: 20, bold: true,  color: '1A1A1A', space_before: 240, space_after: 120 },
@@ -1011,7 +1039,7 @@ const THEMES = {
   },
   green: {
     name: '포레스트 그린',
-    desc: '안정감 있는 녹색 계열',
+    desc: '녹색 계열 테마',
     swatches: ['1B4332', '2D6A4F', '40916C'],
     config: {
       heading1: { font_size: 20, bold: true,  color: '1B4332', space_before: 240, space_after: 120 },
@@ -1086,7 +1114,8 @@ const KO_SECTION = {
   heading5:      '제목 5 (H5)',
   heading6:      '제목 6 (H6)',
   paragraph:     '본문 단락',
-  code_block:    '코드 블록',
+  code_block:    '코드 블록 (```)',
+  inline_code:   '인라인 코드 (`)',
   table_header:  '표 헤더',
   table_row_alt: '표 행 (교차)',
   margin:        '페이지 여백',
@@ -1094,7 +1123,7 @@ const KO_SECTION = {
 
 const KO_FIELD = {
   page_size:        '페이지 크기',
-  font_name:        '기본 폰트',
+  font_name:        '폰트',
   font_size_body:   '본문 글자 크기',
   font_size:        '글자 크기',
   bold:             '굵게 (Bold)',
@@ -1133,8 +1162,13 @@ function buildField(path, key, value) {
   const id = 'sf_' + path.replace(/\./g, '_');
 
   if (key === 'font_name') {
-    return `<div class="field-row"><label>${label}</label>
-      <span class="style-input-readonly">맑은 고딕</span></div>`;
+    if (path === 'font_name') {
+      return `<div class="field-row"><label>${label}</label>
+        <span class="style-input-readonly">맑은 고딕</span></div>`;
+    }
+    // Nested font_name (e.g. code_block.font_name) — editable text field
+    return `<div class="field-row"><label for="${id}">${label}</label>
+      <input id="${id}" type="text" class="style-input" data-path="${path}" value="${esc(String(value))}"></div>`;
   }
   if (key === 'page_size') {
     return `<div class="field-row"><label for="${id}">${label}</label>

@@ -393,6 +393,11 @@ class DocxConverter:
         fn  = cbs.get("font_name", "Consolas")
         fs  = cbs.get("font_size", 9)
         bg  = cbs.get("background_color", "F2F2F2")
+        fc  = cbs.get("font_color", "333333")
+        sb  = cbs.get("space_before", 80)
+        sa  = cbs.get("space_after", 80)
+
+        first_para = True
 
         if lang:
             lp = self.doc.add_paragraph(style="Normal")
@@ -402,24 +407,27 @@ class DocxConverter:
             lr.font.italic = True
             lr.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
             _para_shade(lp, bg)
-            lp.paragraph_format.space_before = Twips(80)
+            lp.paragraph_format.space_before = Twips(sb)
             lp.paragraph_format.space_after  = Twips(0)
             lp.paragraph_format.left_indent  = Twips(180)
+            first_para = False
 
         for line in code.splitlines():
             p = self.doc.add_paragraph(style="Normal")
             run = p.add_run(line or "\u00a0")  # nbsp keeps empty lines visible
             _set_font(run, fn)
             run.font.size = Pt(fs)
+            run.font.color.rgb = _hex(fc)
             _para_shade(p, bg)
-            p.paragraph_format.space_before = Twips(0)
+            p.paragraph_format.space_before = Twips(sb if first_para else 0)
             p.paragraph_format.space_after  = Twips(0)
             p.paragraph_format.left_indent  = Twips(180)
+            first_para = False
 
         # Trailing spacer
         sp = self.doc.add_paragraph(style="Normal")
         sp.paragraph_format.space_before = Twips(0)
-        sp.paragraph_format.space_after  = Twips(80)
+        sp.paragraph_format.space_after  = Twips(sa)
 
     # ── Blockquotes ───────────────────────────────────────────────────────────
 
@@ -626,6 +634,11 @@ class DocxConverter:
         cbs  = self.style.get("code_block", {})
         cfn  = cbs.get("font_name", "Consolas")
         cfs  = cbs.get("font_size", 9)
+        ics  = self.style.get("inline_code", {})
+        icfn = ics.get("font_name", "Consolas")
+        icfs = ics.get("font_size", 9)
+        icfc = ics.get("font_color", "C7254E")
+        icbg = ics.get("background_color", "F2F2F2")
 
         for tok in tokens:
             t = tok.get("type")
@@ -655,22 +668,27 @@ class DocxConverter:
 
             elif t == "codespan":
                 run = para.add_run(tok.get("raw", ""))
-                _set_font(run, cfn)
-                run.font.size = Pt(cfs)
+                _set_font(run, icfn)
+                run.font.size = Pt(icfs)
+                run.font.color.rgb = _hex(icfc)
                 if bold:   run.font.bold   = True
                 if italic: run.font.italic = True
-                # Light shading for inline code
                 rPr = run._r.get_or_add_rPr()
                 shd = OxmlElement("w:shd")
                 shd.set(qn("w:val"), "clear")
                 shd.set(qn("w:color"), "auto")
-                shd.set(qn("w:fill"), "F2F2F2")
+                shd.set(qn("w:fill"), _clean_hex(icbg))
                 rPr.append(shd)
 
             elif t == "link":
                 url       = (tok.get("attrs") or {}).get("url", "")
                 link_text = extract_text(tok.get("children", [])) or url
-                _add_hyperlink(para, link_text, url)
+                if self.style.get("include_hyperlink", True):
+                    _add_hyperlink(para, link_text, url)
+                else:
+                    run = para.add_run(link_text)
+                    _set_font(run, fn)
+                    run.font.size = Pt(fs)
 
             elif t == "image":
                 attrs = tok.get("attrs") or {}
@@ -726,7 +744,8 @@ DEFAULT_STYLE: Dict = {
     "heading5": {"font_size": 11, "bold": True,  "color": "595959", "space_before": 100, "space_after": 30},
     "heading6": {"font_size": 11, "bold": False, "color": "7F7F7F", "space_before": 80,  "space_after": 20},
     "paragraph": {"space_after": 120, "line_spacing": 1.15},
-    "code_block": {"font_name": "Consolas", "font_size": 9, "background_color": "F2F2F2"},
+    "code_block":  {"font_name": "Consolas", "font_size": 9, "background_color": "F2F2F2", "font_color": "333333", "space_before": 80, "space_after": 80},
+    "inline_code": {"font_name": "Consolas", "font_size": 9, "background_color": "F2F2F2", "font_color": "C7254E"},
     "table_header": {"background_color": "2E75B6", "font_color": "FFFFFF", "bold": True},
     "table_row_alt": {"background_color": "EBF3FB"},
     "margin": {"top": 1440, "bottom": 1440, "left": 1440, "right": 1440},

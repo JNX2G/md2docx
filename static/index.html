@@ -504,7 +504,6 @@ select.style-input { cursor: pointer; }
   <div id="header">
     <span id="app-title">MD2DOCX</span>
     <div class="sep"></div>
-    <button class="btn btn-ghost" id="btn-preview">↺ 미리보기</button>
     <label class="ctrl-label">
       <input type="checkbox" id="chk-mermaid" checked>
       Mermaid 포함
@@ -669,7 +668,7 @@ const previewBody   = document.getElementById('preview-body');
 const styleBody     = document.getElementById('style-body');
 const errorBar      = document.getElementById('error-bar');
 const spinner       = document.getElementById('spinner');
-const btnPreview    = document.getElementById('btn-preview');
+
 const btnConvert    = document.getElementById('btn-convert');
 const btnDlMerm     = document.getElementById('btn-dl-mermaid');
 const btnReset      = document.getElementById('btn-reset');
@@ -739,7 +738,6 @@ function setSpinner(on) { spinner.style.display = on ? 'flex' : 'none'; }
 function setBusy(on) {
   setSpinner(on);
   btnConvert.disabled = on;
-  btnPreview.disabled = on;
 }
 
 // ── Progress bar ───────────────────────────────────────────────────────────
@@ -813,7 +811,7 @@ async function triggerPreview() {
   }
 }
 
-btnPreview.addEventListener('click', triggerPreview);
+
 
 // ── Convert to DOCX ────────────────────────────────────────────────────────
 async function triggerConvert() {

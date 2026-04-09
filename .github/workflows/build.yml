@@ -1,0 +1,109 @@
+name: Build Executables
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: md2docx.exe
+            build_cmd: |
+              pip install pyinstaller
+              pyinstaller --onefile \
+                --add-data "static;static" \
+                --collect-data docx \
+                --collect-all mistune \
+                --hidden-import uvicorn.logging \
+                --hidden-import uvicorn.loops.auto \
+                --hidden-import uvicorn.protocols.http.auto \
+                --hidden-import uvicorn.protocols.http.h11_impl \
+                --hidden-import uvicorn.protocols.http.httptools_impl \
+                --hidden-import uvicorn.protocols.websockets.auto \
+                --hidden-import uvicorn.lifespan.on \
+                --hidden-import uvicorn.lifespan.off \
+                --hidden-import lxml.etree \
+                --hidden-import lxml._elementpath \
+                --hidden-import lxml.builder \
+                --hidden-import multipart \
+                --hidden-import email.mime.multipart \
+                --hidden-import email.mime.text \
+                --name md2docx \
+                main.py
+
+          - os: macos-latest
+            artifact: md2docx
+            build_cmd: |
+              pip install pyinstaller
+              pyinstaller --onefile \
+                --add-data "static:static" \
+                --collect-data docx \
+                --collect-all mistune \
+                --hidden-import uvicorn.logging \
+                --hidden-import uvicorn.loops.auto \
+                --hidden-import uvicorn.protocols.http.auto \
+                --hidden-import uvicorn.protocols.http.h11_impl \
+                --hidden-import uvicorn.protocols.http.httptools_impl \
+                --hidden-import uvicorn.protocols.websockets.auto \
+                --hidden-import uvicorn.lifespan.on \
+                --hidden-import uvicorn.lifespan.off \
+                --hidden-import lxml.etree \
+                --hidden-import lxml._elementpath \
+                --hidden-import lxml.builder \
+                --hidden-import multipart \
+                --hidden-import email.mime.multipart \
+                --hidden-import email.mime.text \
+                --name md2docx \
+                main.py
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build executable
+        shell: bash
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: md2docx.exe
+          path: artifacts/windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: md2docx
+          path: artifacts/macos
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/windows/md2docx.exe
+            artifacts/macos/md2docx

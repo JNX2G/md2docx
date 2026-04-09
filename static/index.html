@@ -346,12 +346,27 @@ html, body {
 }
 
 /* Style editor fields */
-.style-section { margin-bottom: 14px; }
-.style-section-title {
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .6px; color: #2E75B6; margin-bottom: 6px;
-  padding-bottom: 3px; border-bottom: 1px solid #e0e6ef;
+.style-section { margin-bottom: 4px; }
+.section-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 7px 10px;
+  background: #eef2fa; border: none; border-radius: 5px;
+  cursor: pointer; font-family: inherit;
+  font-size: 11px; font-weight: 700; color: #1F3864;
+  text-transform: uppercase; letter-spacing: .5px;
+  transition: background .15s;
 }
+.section-toggle:hover { background: #dde6f5; }
+.section-toggle.open { background: #dde6f5; border-radius: 5px 5px 0 0; }
+.section-arrow { font-size: 9px; transition: transform .2s; flex-shrink: 0; }
+.section-toggle.open .section-arrow { transform: rotate(180deg); }
+.section-content {
+  display: none;
+  padding: 8px 8px 4px;
+  border: 1px solid #dde6f5; border-top: none;
+  border-radius: 0 0 5px 5px; margin-bottom: 4px;
+}
+.section-content.open { display: block; }
 .field-row {
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px; margin-bottom: 5px;
@@ -1167,54 +1182,39 @@ function buildSubSection(id, title, primaryFields, moreFields) {
   return html;
 }
 
-function buildSection(title, content) {
-  return `<div class="style-section"><div class="style-section-title">${title}</div>${content}</div>`;
+function buildSection(id, title, content) {
+  return `<div class="style-section">
+    <button class="section-toggle" data-target="sec_${id}">
+      <span>${title}</span><span class="section-arrow">▼</span>
+    </button>
+    <div class="section-content" id="sec_${id}">${content}</div>
+  </div>`;
 }
 
 function buildHeadingSection(cfg, level) {
   const s = `heading${level}`;
-  const primary = makeFields(cfg, s, ['font_size', 'color']);
-  const more    = makeFields(cfg, s, ['bold', 'space_before', 'space_after']);
-  return buildSubSection(s, `H${level}`, primary, more);
+  // 제목은 더보기 없이 모든 필드 표시
+  const fields = makeFields(cfg, s, ['font_size', 'color', 'bold', 'space_before', 'space_after']);
+  return buildSubSection(s, `H${level}`, fields, []);
 }
 
 function buildTextTab(cfg) {
   let html = '';
 
-  // 본문 서식
-  html += buildSection('본문 서식',
+  // 1. 본문 서식 — 더보기 없음
+  html += buildSection('body', '본문 서식',
     buildSubSection('body', null,
       makeFields(cfg, null, ['font_size_body', 'font_name']),
       []
     )
   );
 
-  // 제목 서식
+  // 2. 제목 서식 — 더보기 없음, H1~H6 전체 표시
   let headHtml = '';
-  for (let i = 1; i <= 4; i++) headHtml += buildHeadingSection(cfg, i);
-  let h56Html = '';
-  for (let i = 5; i <= 6; i++) h56Html += buildHeadingSection(cfg, i);
-  headHtml += `<button class="more-toggle" data-target="more_h56">＋ H5~H6 더보기</button>
-    <div class="more-content" id="more_h56">${h56Html}</div>`;
-  html += buildSection('제목 서식', headHtml);
+  for (let i = 1; i <= 6; i++) headHtml += buildHeadingSection(cfg, i);
+  html += buildSection('headings', '제목 서식', headHtml);
 
-  // 코드 블록
-  html += buildSection('코드 블록 (```)',
-    buildSubSection('code_block', null,
-      makeFields(cfg, 'code_block', ['font_color', 'background_color']),
-      makeFields(cfg, 'code_block', ['font_name', 'font_size', 'space_before', 'space_after'])
-    )
-  );
-
-  // 인라인 코드
-  html += buildSection('인라인 코드 (`)',
-    buildSubSection('inline_code', null,
-      makeFields(cfg, 'inline_code', ['font_color', 'background_color']),
-      makeFields(cfg, 'inline_code', ['font_name', 'font_size'])
-    )
-  );
-
-  // 표 서식
+  // 3. 표 서식
   const tableHtml =
     buildSubSection('table_header', '표 헤더',
       makeFields(cfg, 'table_header', ['background_color', 'font_color']),
@@ -1224,10 +1224,26 @@ function buildTextTab(cfg) {
       makeFields(cfg, 'table_row_alt', ['background_color']),
       []
     );
-  html += buildSection('표 서식', tableHtml);
+  html += buildSection('table', '표 서식', tableHtml);
 
-  // 하이퍼링크 서식
-  html += buildSection('하이퍼링크 서식',
+  // 4. 코드 블록
+  html += buildSection('code_block', '코드 블록 (```)',
+    buildSubSection('code_block', null,
+      makeFields(cfg, 'code_block', ['font_color', 'background_color']),
+      makeFields(cfg, 'code_block', ['font_name', 'font_size', 'space_before', 'space_after'])
+    )
+  );
+
+  // 5. 인라인 코드
+  html += buildSection('inline_code', '인라인 코드 (`)',
+    buildSubSection('inline_code', null,
+      makeFields(cfg, 'inline_code', ['font_color', 'background_color']),
+      makeFields(cfg, 'inline_code', ['font_name', 'font_size'])
+    )
+  );
+
+  // 6. 하이퍼링크 서식 — 더보기 없음
+  html += buildSection('hyperlink', '하이퍼링크 서식',
     buildSubSection('hyperlink', null,
       makeFields(cfg, 'hyperlink', ['font_color', 'underline']),
       []
@@ -1241,23 +1257,23 @@ function buildPageTab(cfg) {
   let html = '';
 
   // 페이지 설정
-  html += buildSection('페이지 설정',
+  html += buildSection('page', '페이지 설정',
     buildSubSection('page', null,
       makeFields(cfg, null, ['page_size']),
       []
     )
   );
 
-  // 페이지 여백
-  html += buildSection('페이지 여백',
+  // 페이지 여백 — 더보기 없음, 4개 모두 표시
+  html += buildSection('margin', '페이지 여백',
     buildSubSection('margin', null,
-      makeFields(cfg, 'margin', ['top', 'bottom']),
-      makeFields(cfg, 'margin', ['left', 'right'])
+      makeFields(cfg, 'margin', ['top', 'bottom', 'left', 'right']),
+      []
     )
   );
 
   // 단락 간격
-  html += buildSection('본문 단락 간격',
+  html += buildSection('paragraph', '본문 단락 간격',
     buildSubSection('paragraph', null,
       makeFields(cfg, 'paragraph', ['space_after', 'line_spacing']),
       []
@@ -1283,7 +1299,17 @@ function renderStyleEditor() {
     if (el.type === 'color') el.addEventListener('input', onStyleChange);
   });
 
-  // Wire more-toggles
+  // Wire section toggles (title click)
+  styleBody.querySelectorAll('.section-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      const open = target.classList.toggle('open');
+      btn.classList.toggle('open', open);
+    });
+  });
+
+  // Wire more-toggles (더보기 within sections)
   styleBody.querySelectorAll('.more-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
       const target = document.getElementById(btn.dataset.target);

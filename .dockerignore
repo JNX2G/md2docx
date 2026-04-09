@@ -1,0 +1,10 @@
+.venv/
+.cache/
+mermaid_output/
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.spec
+.git/

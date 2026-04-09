@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MD2DOCX</title>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', -apple-system,
+               BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: #eef0f4;
+  color: #1a1a2e;
+  overflow: hidden;
+}
+
+/* ── App shell ────────────────────────────────────────────────────────────── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+#header {
+  background: #1F3864;
+  color: #fff;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-height: 52px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  flex-shrink: 0;
+  z-index: 10;
+}
+#app-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.sep { width: 1px; height: 24px; background: rgba(255,255,255,.25); margin: 0 2px; flex-shrink: 0; }
+.spacer { flex: 1; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px; border-radius: 5px; border: none;
+  font-size: 13px; font-family: inherit; cursor: pointer;
+  font-weight: 600; transition: filter .15s, opacity .15s;
+  white-space: nowrap;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn:active { filter: brightness(.95); }
+.btn:disabled { opacity: .5; cursor: not-allowed; filter: none !important; }
+.btn-ghost {
+  background: rgba(255,255,255,.15); color: #fff;
+  border: 1px solid rgba(255,255,255,.35);
+  padding: 5px 11px; font-weight: 500; font-size: 13px;
+}
+.btn-ghost:hover { background: rgba(255,255,255,.25); }
+.btn-ghost.active { background: rgba(255,255,255,.3); border-color: rgba(255,255,255,.6); }
+
+/* Checkbox label */
+.ctrl-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: rgba(255,255,255,.9); font-size: 13px; cursor: pointer;
+  white-space: nowrap; user-select: none;
+}
+.ctrl-label input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
+
+/* Spinner */
+.spinner {
+  width: 20px; height: 20px; flex-shrink: 0;
+  border: 2.5px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Progress bar ─────────────────────────────────────────────────────────── */
+#progress-wrap {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  background: #162d52;
+  flex-shrink: 0;
+}
+#progress-track {
+  flex: 1;
+  height: 5px;
+  background: rgba(255,255,255,.2);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+#progress-fill {
+  position: absolute;
+  top: 0; height: 100%;
+  width: 40%;
+  background: #5ba4e0;
+  border-radius: 3px;
+  animation: slide-progress 1.3s ease-in-out infinite;
+}
+@keyframes slide-progress {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+#progress-label {
+  font-size: 12px;
+  color: rgba(255,255,255,.8);
+  white-space: nowrap;
+  min-width: 110px;
+}
+
+/* ── Error bar ────────────────────────────────────────────────────────────── */
+#error-bar {
+  width: 100%; background: #fdeded; color: #b91c1c;
+  padding: 6px 16px; font-size: 13px;
+  border-top: 1px solid #fca5a5;
+  flex-shrink: 0; display: none;
+}
+
+/* ── 2-column body ───────────────────────────────────────────────────────── */
+#columns {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+.panel {
+  display: flex; flex-direction: column;
+  flex: 1; min-width: 0; overflow: hidden;
+  background: #fff;
+  border-right: 1px solid #dde1e8;
+}
+.panel:last-child { border-right: none; }
+
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px;
+  height: 44px;
+  flex-shrink: 0;
+  background: #f4f6fa;
+  border-bottom: 1px solid #dde1e8;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .7px;
+  color: #4a5568;
+}
+
+/* ── Left panel: Markdown input ─────────────────────────────────────────── */
+#md-input {
+  flex: 1; resize: none; border: none; outline: none;
+  padding: 14px; font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 13px; line-height: 1.6; color: #1a1a2e;
+  background: #fafbfc;
+  tab-size: 2;
+}
+#char-count {
+  padding: 4px 14px; font-size: 11px; color: #999;
+  background: #f4f6fa; border-top: 1px solid #dde1e8;
+  flex-shrink: 0;
+}
+
+/* ── Panel header action buttons ─────────────────────────────────────────── */
+#btn-upload {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 30px; padding: 0 14px;
+  border-radius: 5px;
+  font-size: 13px; font-family: inherit; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+  border: none; box-sizing: border-box;
+  transition: filter .15s; user-select: none;
+  background: #2E75B6; color: #fff;
+}
+#btn-upload:hover { filter: brightness(1.1); }
+#btn-upload:active { filter: brightness(.93); }
+
+.header-actions {
+  display: flex; align-items: center; gap: 6px;
+}
+
+/* DOCX 변환하기 버튼 */
+#btn-convert {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 14px;
+  border-radius: 5px; border: none;
+  font-size: 13px; font-family: inherit; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+  background: #217346; color: #fff;
+  transition: filter .15s;
+}
+#btn-convert:hover { filter: brightness(1.1); }
+#btn-convert:active { filter: brightness(.93); }
+#btn-convert:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+
+/* Mermaid ZIP 다운로드 버튼 */
+#btn-dl-mermaid {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 12px;
+  border-radius: 5px; border: 1px solid #b8cce4;
+  font-size: 12px; font-family: inherit; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+  background: #e2eaf4; color: #2E75B6;
+  transition: background .15s, opacity .15s;
+}
+#btn-dl-mermaid:hover:not(:disabled) { background: #ccdaf0; }
+#btn-dl-mermaid:active:not(:disabled) { background: #b8cce4; }
+#btn-dl-mermaid:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Middle panel: Preview ───────────────────────────────────────────────── */
+#preview-body {
+  flex: 1; overflow-y: auto; padding: 20px 24px;
+  background: #fff;
+}
+.empty-state {
+  margin-top: 60px; text-align: center;
+  color: #aaa; font-size: 13px; line-height: 2;
+}
+/* Preview content styles (base — overridden by #preview-dynamic-style) */
+#preview-body h1 { font-size: 1.9em; color: #1F3864; margin: 1.4em 0 .5em; border-bottom: 2px solid #1F3864; padding-bottom: .2em; }
+#preview-body h2 { font-size: 1.5em; color: #2E75B6; margin: 1.2em 0 .4em; }
+#preview-body h3 { font-size: 1.2em; color: #44546A; margin: 1em 0 .35em; }
+#preview-body h4 { font-size: 1.05em; color: #44546A; margin: .9em 0 .3em; }
+#preview-body h5 { font-size: .95em; color: #595959; margin: .8em 0 .28em; }
+#preview-body h6 { font-size: .9em; color: #7F7F7F; margin: .7em 0 .25em; font-weight: 400; }
+#preview-body h1:first-child, #preview-body h2:first-child,
+#preview-body h3:first-child, #preview-body h4:first-child { margin-top: 0; }
+#preview-body p  { margin: .5em 0 .8em; line-height: 1.7; color: #2d2d2d; }
+#preview-body a  { color: #2E75B6; text-decoration: underline; }
+#preview-body strong { font-weight: 700; }
+#preview-body em     { font-style: italic; }
+#preview-body del    { text-decoration: line-through; color: #777; }
+#preview-body code {
+  background: #f2f2f2; padding: 1px 5px; border-radius: 3px;
+  font-family: 'Cascadia Code', Consolas, monospace; font-size: .88em; color: #c7254e;
+}
+#preview-body pre {
+  background: #f2f2f2; border-radius: 6px; padding: 12px 14px;
+  overflow-x: auto; margin: .8em 0;
+  border-left: 3px solid #2E75B6;
+}
+#preview-body pre code {
+  background: none; padding: 0; color: #1a1a2e;
+  font-size: .87em; line-height: 1.55;
+}
+#preview-body .code-lang {
+  display: block; font-size: .78em; color: #888; margin-bottom: 4px; font-style: italic;
+}
+#preview-body .mermaid-block {
+  background: #f8f9ff; border: 1px dashed #2E75B6;
+  border-radius: 6px; padding: 12px 14px; margin: .8em 0;
+}
+#preview-body .mermaid-block .mermaid-label {
+  font-size: .78em; color: #2E75B6; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px;
+}
+#preview-body .mermaid-block pre { background: none; border: none; padding: 0; margin: 0; }
+#preview-body blockquote {
+  border-left: 4px solid #2E75B6; margin: .8em 0;
+  padding: 6px 14px; color: #555; font-style: italic; background: #f7f9fc;
+}
+#preview-body hr { border: none; border-top: 2px solid #dde1e8; margin: 1.2em 0; }
+#preview-body ul, #preview-body ol { margin: .4em 0 .8em 1.4em; line-height: 1.7; }
+#preview-body li { margin: .15em 0; }
+#preview-body li > ul, #preview-body li > ol { margin: .15em 0 .15em 1.2em; }
+#preview-body table { border-collapse: collapse; width: 100%; margin: .8em 0; font-size: .92em; }
+#preview-body th { background: #2E75B6; color: #fff; font-weight: 700; padding: 7px 10px; text-align: left; }
+#preview-body td { padding: 6px 10px; border: 1px solid #dde1e8; }
+#preview-body tr:nth-child(even) td { background: #EBF3FB; }
+#preview-body .img-placeholder {
+  display: inline-block; background: #f0f0f0; border: 1px dashed #aaa;
+  padding: 2px 8px; border-radius: 3px; color: #888; font-style: italic;
+}
+
+/* ── Style Drawer ─────────────────────────────────────────────────────────── */
+#style-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.35);
+  z-index: 100;
+  backdrop-filter: blur(1px);
+}
+#style-overlay.open { display: block; }
+
+#style-drawer {
+  position: fixed;
+  top: 0; right: 0;
+  width: 400x;
+  height: 100%;
+  background: #fff;
+  box-shadow: -4px 0 20px rgba(0,0,0,.18);
+  z-index: 101;
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .25s cubic-bezier(.4,0,.2,1);
+}
+#style-drawer.open { transform: translateX(0); }
+
+#style-drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px;
+  height: 52px;
+  background: #1F3864;
+  color: #fff;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.drawer-title {
+  font-size: 14px; font-weight: 700; letter-spacing: .3px;
+  white-space: nowrap; margin-right: 4px;
+}
+.drawer-actions {
+  display: flex; align-items: center; gap: 5px; flex-wrap: nowrap;
+}
+.btn-drawer {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 4px 9px; border-radius: 4px;
+  font-size: 12px; font-family: inherit; font-weight: 600;
+  cursor: pointer; white-space: nowrap; border: none;
+  background: rgba(255,255,255,.18); color: #fff;
+  border: 1px solid rgba(255,255,255,.3);
+  transition: background .15s;
+}
+.btn-drawer:hover { background: rgba(255,255,255,.28); }
+.btn-drawer.btn-apply {
+  background: #2E75B6; border-color: #2E75B6; color: #fff;
+}
+.btn-drawer.btn-apply:hover { background: #3886c8; }
+.btn-drawer.btn-close {
+  padding: 4px 8px; font-size: 14px; background: rgba(255,255,255,.1);
+}
+
+#style-body {
+  flex: 1; overflow-y: auto; padding: 12px;
+}
+
+/* Style editor fields */
+.style-section { margin-bottom: 14px; }
+.style-section-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .6px; color: #2E75B6; margin-bottom: 6px;
+  padding-bottom: 3px; border-bottom: 1px solid #e0e6ef;
+}
+.field-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 5px;
+}
+.field-row label {
+  font-size: 12px; color: #4a5568; white-space: nowrap;
+  flex-shrink: 0; min-width: 90px;
+}
+.style-input {
+  font-size: 12px; font-family: inherit; flex: 1; min-width: 0;
+  border: 1px solid #cdd4e0; border-radius: 4px;
+  padding: 3px 6px; background: #fff; color: #1a1a2e;
+  transition: border-color .15s;
+}
+.style-input:focus { outline: none; border-color: #2E75B6; }
+.style-input-readonly {
+  font-size: 12px; flex: 1; padding: 3px 6px;
+  border: 1px solid #cdd4e0; border-radius: 4px;
+  background: #f5f7fa; color: #888; user-select: none;
+}
+input[type=color].style-input {
+  padding: 1px 3px; height: 26px; cursor: pointer; min-width: 52px; flex: 0;
+}
+input[type=checkbox].style-input {
+  all: revert;
+  width: 15px; height: 15px; cursor: pointer; flex-shrink: 0;
+}
+select.style-input { cursor: pointer; }
+
+/* ── Simple-mode placeholder ─────────────────────────────────────────────── */
+.simple-hint {
+  font-size: 11px; color: #999; text-align: center;
+  padding: 20px 10px; line-height: 1.6;
+}
+
+/* ── Theme bar ───────────────────────────────────────────────────────────── */
+#theme-bar {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid #e0e6ef;
+  flex-shrink: 0;
+  background: #f8fafd;
+}
+#theme-bar-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .6px; color: #8a9ab5; margin-bottom: 7px;
+}
+#theme-cards {
+  display: flex; gap: 7px;
+}
+.theme-card {
+  flex: 1; min-width: 0;
+  border: 2px solid #dde1e8;
+  border-radius: 7px;
+  padding: 7px 6px 6px;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+  text-align: center;
+}
+.theme-card:hover { border-color: #2E75B6; box-shadow: 0 0 0 2px rgba(46,117,182,.15); }
+.theme-card.selected { border-color: #2E75B6; box-shadow: 0 0 0 3px rgba(46,117,182,.2); background: #f0f6ff; }
+.theme-swatches {
+  display: flex; justify-content: center; gap: 3px; margin-bottom: 5px;
+}
+.theme-swatch {
+  width: 14px; height: 14px; border-radius: 3px;
+  border: 1px solid rgba(0,0,0,.08);
+}
+.theme-name {
+  font-size: 11px; font-weight: 700; color: #2d3748;
+  line-height: 1.2; margin-bottom: 2px;
+}
+.theme-desc {
+  font-size: 10px; color: #8a9ab5; line-height: 1.3;
+}
+
+/* ── Responsive (mobile) ─────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  #columns { flex-direction: column; overflow-y: auto; }
+  .panel { min-height: 260px; border-right: none; border-bottom: 1px solid #dde1e8; }
+  body, html { overflow: auto; }
+  #app { height: auto; min-height: 100vh; }
+  #columns { flex: none; }
+  #style-drawer { width: 100%; }
+}
+</style>
+<!-- 스타일 설정 반영 시 동적으로 채워지는 preview CSS — 메인 스타일 시트 뒤에 위치해야 우선순위를 가짐 -->
+<style id="preview-dynamic-style"></style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div id="header">
+    <span id="app-title">MD2DOCX</span>
+    <div class="sep"></div>
+    <button class="btn btn-ghost" id="btn-preview">↺ 미리보기</button>
+    <label class="ctrl-label">
+      <input type="checkbox" id="chk-mermaid" checked>
+      Mermaid 포함
+    </label>
+    <label class="ctrl-label">
+      <input type="checkbox" id="chk-bullet" checked>
+      불릿 기호 포함 (미 체크시 들여쓰기로 구분)
+    </label>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="btn-style-toggle">◧ 스타일 설정</button>
+    <div class="spinner" id="spinner" style="display:none"></div>
+  </div>
+
+  <!-- ── Progress bar ──────────────────────────────────────────────────── -->
+  <div id="progress-wrap">
+    <div id="progress-track"><div id="progress-fill"></div></div>
+    <div id="progress-label">변환 중... 0초 경과</div>
+  </div>
+
+  <div id="error-bar"></div>
+
+  <!-- ── 2-column layout ───────────────────────────────────────────────── -->
+  <div id="columns">
+
+    <!-- Left: Markdown input -->
+    <div class="panel">
+      <div class="panel-header">
+        마크다운 입력
+        <label id="btn-upload" title=".md / .txt 파일 불러오기">
+          &#128193; MD 파일 열기
+          <input type="file" id="file-input" accept=".md,.markdown,.txt" style="display:none">
+        </label>
+      </div>
+      <textarea id="md-input" spellcheck="false"
+        placeholder="마크다운을 여기에 붙여넣거나 입력하세요…&#10;&#10;또는 위의 &quot;MD 파일 열기&quot;로 파일을 불러올 수 있습니다.&#10;&#10;입력을 멈추면 1초 후 자동으로 미리보기가 갱신됩니다."></textarea>
+      <div id="char-count">0 자</div>
+    </div>
+
+    <!-- Right: Preview -->
+    <div class="panel">
+      <div class="panel-header">
+        미리보기
+        <div class="header-actions">
+          <button id="btn-dl-mermaid" disabled title="변환 후 Mermaid 이미지가 있을 때 활성화됩니다">⬇ Mermaid 다운로드</button>
+          <button id="btn-convert">⬇ DOCX 변환하기</button>
+        </div>
+      </div>
+      <div id="preview-body">
+        <div class="empty-state">
+          왼쪽 패널에 마크다운을 입력하세요.<br>
+          미리보기가 자동으로 표시됩니다.
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#columns -->
+
+  <!-- ── Style drawer overlay ──────────────────────────────────────────── -->
+  <div id="style-overlay"></div>
+
+  <!-- ── Style drawer ──────────────────────────────────────────────────── -->
+  <div id="style-drawer">
+    <div id="style-drawer-header">
+      <span class="drawer-title">스타일 설정</span>
+      <div class="drawer-actions">
+        <button class="btn-drawer btn-apply" id="btn-apply-style">▶ 적용</button>
+        <button class="btn-drawer" id="btn-mode">⚙ 세부 설정</button>
+        <button class="btn-drawer" id="btn-reset">초기화</button>
+        <button class="btn-drawer btn-close" id="btn-style-close">✕</button>
+      </div>
+    </div>
+    <!-- 테마 선택 -->
+    <div id="theme-bar">
+      <div id="theme-bar-label">빠른 테마 선택</div>
+      <div id="theme-cards"></div>
+    </div>
+    <div id="style-body"></div>
+  </div>
+
+</div><!-- /#app -->
+
+<script>
+'use strict';
+
+// ── Default style config ────────────────────────────────────────────────────
+const DEFAULT_CONFIG = {
+  page_size: 'A4',
+  font_name: 'Malgun Gothic',
+  font_size_body: 11,
+  heading1: { font_size: 20, bold: true,  color: '1F3864', space_before: 240, space_after: 120 },
+  heading2: { font_size: 16, bold: true,  color: '2E75B6', space_before: 200, space_after: 80  },
+  heading3: { font_size: 13, bold: true,  color: '44546A', space_before: 160, space_after: 60  },
+  heading4: { font_size: 12, bold: true,  color: '44546A', space_before: 120, space_after: 40  },
+  heading5: { font_size: 11, bold: true,  color: '595959', space_before: 100, space_after: 30  },
+  heading6: { font_size: 11, bold: false, color: '7F7F7F', space_before: 80,  space_after: 20  },
+  paragraph: { space_after: 120, line_spacing: 1.15 },
+  code_block: { font_name: 'Consolas', font_size: 9, background_color: 'F2F2F2' },
+  table_header: { background_color: '2E75B6', font_color: 'FFFFFF', bold: true },
+  table_row_alt: { background_color: 'EBF3FB' },
+  margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 },
+};
+
+const LS_KEY        = 'md2docx_style_v2';
+const LS_MODE_KEY   = 'md2docx_stylemode';
+const LS_BULLET_KEY = 'md2docx_bullet';
+
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      // Deep-merge to pick up any new keys in DEFAULT_CONFIG
+      const saved = JSON.parse(raw);
+      const merged = deepClone(DEFAULT_CONFIG);
+      for (const [k, v] of Object.entries(saved)) {
+        if (typeof v === 'object' && v !== null && !Array.isArray(v) && merged[k]) {
+          merged[k] = { ...merged[k], ...v };
+        } else {
+          merged[k] = v;
+        }
+      }
+      return merged;
+    }
+  } catch (_) {}
+  return deepClone(DEFAULT_CONFIG);
+}
+
+function saveConfig(cfg) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch (_) {}
+}
+
+let currentConfig = loadConfig();
+
+function loadBullet() {
+  try { const v = localStorage.getItem(LS_BULLET_KEY); return v === null ? true : v === 'true'; } catch (_) { return true; }
+}
+function saveBullet(v) {
+  try { localStorage.setItem(LS_BULLET_KEY, v ? 'true' : 'false'); } catch (_) {}
+}
+
+// ── DOM refs ────────────────────────────────────────────────────────────────
+const mdInput       = document.getElementById('md-input');
+const charCount     = document.getElementById('char-count');
+const previewBody   = document.getElementById('preview-body');
+const styleBody     = document.getElementById('style-body');
+const errorBar      = document.getElementById('error-bar');
+const spinner       = document.getElementById('spinner');
+const btnPreview    = document.getElementById('btn-preview');
+const btnConvert    = document.getElementById('btn-convert');
+const btnDlMerm     = document.getElementById('btn-dl-mermaid');
+const btnReset      = document.getElementById('btn-reset');
+const btnMode       = document.getElementById('btn-mode');
+const btnApply      = document.getElementById('btn-apply-style');
+const btnStyleToggle = document.getElementById('btn-style-toggle');
+const btnStyleClose  = document.getElementById('btn-style-close');
+const styleDrawer   = document.getElementById('style-drawer');
+const styleOverlay  = document.getElementById('style-overlay');
+const chkMermaid    = document.getElementById('chk-mermaid');
+const chkBullet     = document.getElementById('chk-bullet');
+chkBullet.checked = loadBullet();
+chkBullet.addEventListener('change', () => saveBullet(chkBullet.checked));
+
+const fileInput     = document.getElementById('file-input');
+const progressWrap  = document.getElementById('progress-wrap');
+const progressLabel = document.getElementById('progress-label');
+const dynStyle      = document.getElementById('preview-dynamic-style');
+
+// ── Drawer open/close ──────────────────────────────────────────────────────
+function openDrawer() {
+  styleDrawer.classList.add('open');
+  styleOverlay.classList.add('open');
+  btnStyleToggle.classList.add('active');
+}
+function closeDrawer() {
+  styleDrawer.classList.remove('open');
+  styleOverlay.classList.remove('open');
+  btnStyleToggle.classList.remove('active');
+}
+
+btnStyleToggle.addEventListener('click', () => {
+  styleDrawer.classList.contains('open') ? closeDrawer() : openDrawer();
+});
+btnStyleClose.addEventListener('click', closeDrawer);
+styleOverlay.addEventListener('click', closeDrawer);
+
+// ── File upload ────────────────────────────────────────────────────────────
+let uploadedBasename = '';
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  uploadedBasename = file.name.replace(/\.[^.]+$/, '');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    mdInput.value = e.target.result;
+    updateCharCount();
+    clearError();
+    schedulePreview();
+  };
+  reader.onerror = () => showError('파일 읽기 실패: ' + file.name);
+  reader.readAsText(file, 'UTF-8');
+  fileInput.value = '';
+});
+
+// ── Error / spinner helpers ────────────────────────────────────────────────
+function showError(msg) {
+  errorBar.textContent = msg;
+  errorBar.style.display = msg ? 'block' : 'none';
+}
+function clearError() { showError(''); }
+function setSpinner(on) { spinner.style.display = on ? 'flex' : 'none'; }
+function setBusy(on) {
+  setSpinner(on);
+  btnConvert.disabled = on;
+  btnPreview.disabled = on;
+}
+
+// ── Progress bar ───────────────────────────────────────────────────────────
+let _convTimer = null;
+let _convStart = 0;
+
+function startProgress() {
+  _convStart = Date.now();
+  progressWrap.style.display = 'flex';
+  progressLabel.textContent = '변환 중... 0초 경과';
+  _convTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - _convStart) / 1000);
+    progressLabel.textContent = `변환 중... ${s}초 경과`;
+  }, 500);
+}
+function stopProgress() {
+  clearInterval(_convTimer);
+  progressWrap.style.display = 'none';
+}
+
+// ── Character count ────────────────────────────────────────────────────────
+function updateCharCount() {
+  charCount.textContent = `${mdInput.value.length.toLocaleString()} 자`;
+}
+updateCharCount();
+
+// ── Debounced auto-preview ─────────────────────────────────────────────────
+let _debounce = null;
+function schedulePreview() {
+  clearTimeout(_debounce);
+  _debounce = setTimeout(triggerPreview, 1000);
+}
+
+mdInput.addEventListener('input', () => { updateCharCount(); schedulePreview(); });
+mdInput.addEventListener('paste', () => {
+  requestAnimationFrame(() => {
+    // NFD로 들어온 한글(macOS 등 클립보드)을 NFC로 정규화
+    if (mdInput.value !== mdInput.value.normalize('NFC')) {
+      const sel = mdInput.selectionStart;
+      mdInput.value = mdInput.value.normalize('NFC');
+      mdInput.selectionStart = mdInput.selectionEnd = sel;
+    }
+    updateCharCount();
+    schedulePreview();
+  });
+});
+
+// ── Preview ────────────────────────────────────────────────────────────────
+async function triggerPreview() {
+  const md = mdInput.value;
+  if (!md.trim()) {
+    previewBody.innerHTML = '<div class="empty-state">왼쪽 패널에 마크다운을 입력하세요.<br>미리보기가 자동으로 표시됩니다.</div>';
+    return;
+  }
+
+  clearError();
+  const fd = new FormData();
+  fd.append('markdown', md);
+
+  try {
+    const res = await fetch('/preview', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showError('미리보기 오류: ' + (err.detail || res.statusText));
+      return;
+    }
+    const data = await res.json();
+    previewBody.innerHTML = renderTokens(data.tokens || []);
+    // 간편 모드라면 사용된 서식 기반으로 스타일 에디터 갱신
+    if (styleMode === 'simple') renderStyleEditor();
+  } catch (e) {
+    showError('미리보기 실패: ' + e.message);
+  }
+}
+
+btnPreview.addEventListener('click', triggerPreview);
+
+// ── Convert to DOCX ────────────────────────────────────────────────────────
+async function triggerConvert() {
+  const md = mdInput.value;
+  if (!md.trim()) { showError('마크다운 내용을 먼저 입력해 주세요.'); return; }
+
+  clearError();
+  setBusy(true);
+  startProgress();
+  btnDlMerm.disabled = true;
+
+  const fd = new FormData();
+  fd.append('markdown', md);
+  fd.append('style_config', JSON.stringify({...currentConfig, show_bullet_symbol: chkBullet.checked}));
+  fd.append('include_mermaid', chkMermaid.checked ? 'true' : 'false');
+
+  try {
+    const res = await fetch('/convert', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showError('변환 오류: ' + (err.detail || res.statusText));
+      return;
+    }
+    const mermaidCount = parseInt(res.headers.get('X-Mermaid-Count') || '0', 10);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = (uploadedBasename ? uploadedBasename + '_converted' : 'converted') + '.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    btnDlMerm.disabled = mermaidCount === 0;
+  } catch (e) {
+    showError('변환 실패: ' + e.message);
+  } finally {
+    setBusy(false);
+    stopProgress();
+  }
+}
+
+btnConvert.addEventListener('click', triggerConvert);
+
+// ── Download mermaid ZIP ───────────────────────────────────────────────────
+btnDlMerm.addEventListener('click', async () => {
+  try {
+    const res = await fetch('/download-mermaid-images');
+    if (!res.ok) { showError('저장된 Mermaid 이미지가 없습니다. 먼저 변환을 실행해 주세요.'); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'mermaid_images.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) {
+    showError('다운로드 실패: ' + e.message);
+  }
+});
+
+// ── Preview renderer ───────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderInline(tokens) {
+  if (!tokens || !tokens.length) return '';
+  return tokens.map(tok => {
+    switch (tok.type) {
+      case 'text':          return esc(tok.raw || '');
+      case 'strong':        return `<strong>${renderInline(tok.children)}</strong>`;
+      case 'emphasis':      return `<em>${renderInline(tok.children)}</em>`;
+      case 'strikethrough': return `<del>${renderInline(tok.children)}</del>`;
+      case 'codespan':      return `<code>${esc(tok.raw || '')}</code>`;
+      case 'link': {
+        const url = esc((tok.attrs && tok.attrs.url) || '');
+        return `<a href="${url}" target="_blank" rel="noopener">${renderInline(tok.children)}</a>`;
+      }
+      case 'image': {
+        const alt = esc((tok.attrs && tok.attrs.alt) || '');
+        return `<span class="img-placeholder">[이미지: ${alt}]</span>`;
+      }
+      case 'linebreak':
+      case 'softlinebreak': return ' ';
+      case 'raw_html':
+      case 'html_inline':   return esc(tok.raw || '');
+      default:
+        if (tok.children) return renderInline(tok.children);
+        if (tok.raw)      return esc(tok.raw);
+        return '';
+    }
+  }).join('');
+}
+
+function renderListItem(tok) {
+  const children = tok.children || [];
+  let inner = '';
+  for (const child of children) {
+    if (child.type === 'paragraph' || child.type === 'block_text') {
+      inner += renderInline(child.children);
+    } else {
+      inner += renderBlock(child);
+    }
+  }
+  return `<li>${inner}</li>`;
+}
+
+function renderTable(tok) {
+  let thead = '', tbody = '';
+  for (const child of (tok.children || [])) {
+    if (child.type === 'table_head') {
+      thead = '<thead><tr>' + (child.children || []).map(cell =>
+        `<th>${renderInline(cell.children)}</th>`
+      ).join('') + '</tr></thead>';
+    } else if (child.type === 'table_body') {
+      tbody = '<tbody>' + (child.children || []).map(row =>
+        '<tr>' + (row.children || []).map(cell =>
+          `<td>${renderInline(cell.children)}</td>`
+        ).join('') + '</tr>'
+      ).join('') + '</tbody>';
+    }
+  }
+  return `<table>${thead}${tbody}</table>`;
+}
+
+function renderBlock(tok) {
+  if (!tok) return '';
+  switch (tok.type) {
+    case 'heading': {
+      const lv = (tok.attrs && tok.attrs.level) || 1;
+      return `<h${lv}>${renderInline(tok.children)}</h${lv}>`;
+    }
+    case 'paragraph':
+      return `<p>${renderInline(tok.children)}</p>`;
+    case 'block_text':
+      return renderInline(tok.children);
+    case 'block_code': {
+      const info = ((tok.attrs && tok.attrs.info) || '').trim();
+      const code = esc(tok.raw || '');
+      if (info.toLowerCase() === 'mermaid') {
+        return `<div class="mermaid-block"><div class="mermaid-label">Mermaid 다이어그램</div><pre><code>${code}</code></pre></div>`;
+      }
+      const langLabel = info ? `<span class="code-lang">${esc(info)}</span>` : '';
+      return `<pre>${langLabel}<code>${code}</code></pre>`;
+    }
+    case 'block_quote': {
+      const inner = (tok.children || []).map(renderBlock).join('');
+      return `<blockquote>${inner}</blockquote>`;
+    }
+    case 'list': {
+      const tag   = (tok.attrs && tok.attrs.ordered) ? 'ol' : 'ul';
+      const items = (tok.children || []).map(renderListItem).join('');
+      return `<${tag}>${items}</${tag}>`;
+    }
+    case 'thematic_break': return '<hr>';
+    case 'table':          return renderTable(tok);
+    case 'blank_line':     return '';
+    case 'block_html':     return `<div>${esc(tok.raw || '')}</div>`;
+    default:
+      if (tok.children) return tok.children.map(renderBlock).join('');
+      return '';
+  }
+}
+
+function renderTokens(tokens) {
+  return tokens.map(renderBlock).join('') || '<div class="empty-state">미리볼 내용이 없습니다.</div>';
+}
+
+// ── Markdown format detection (간편 모드용) ────────────────────────────────
+function detectUsedFormats(md) {
+  const used = new Set();
+  used.add('paragraph'); // 항상 포함
+
+  // Headings H1~H6
+  for (let i = 1; i <= 6; i++) {
+    if (new RegExp(`^#{${i}}[^#]`, 'm').test(md)) used.add(`heading${i}`);
+  }
+
+  // Tables
+  if (/^\|.+\|/m.test(md)) used.add('table');
+
+  // Code blocks (``` ... ```)
+  if (/^```/m.test(md)) used.add('code_block');
+
+  // Mermaid diagrams
+  if (/^```\s*mermaid/im.test(md)) used.add('mermaid');
+
+  // Blockquotes
+  if (/^>/m.test(md)) used.add('blockquote');
+
+  return used;
+}
+
+// SIMPLE_PATHS는 실행 시마다 감지된 서식 기반으로 계산
+function getSimplePaths() {
+  const md = mdInput.value;
+  const used = detectUsedFormats(md);
+
+  const paths = new Set([
+    'page_size', 'font_name', 'font_size_body',
+    'paragraph.space_after', 'paragraph.line_spacing',
+    'margin.top', 'margin.bottom', 'margin.left', 'margin.right',
+  ]);
+
+  for (let i = 1; i <= 6; i++) {
+    if (used.has(`heading${i}`)) {
+      paths.add(`heading${i}.font_size`);
+      paths.add(`heading${i}.bold`);
+      paths.add(`heading${i}.color`);
+      paths.add(`heading${i}.space_before`);
+      paths.add(`heading${i}.space_after`);
+    }
+  }
+
+  if (used.has('table')) {
+    paths.add('table_header.background_color');
+    paths.add('table_header.font_color');
+    paths.add('table_header.bold');
+    paths.add('table_row_alt.background_color');
+  }
+
+  if (used.has('code_block')) {
+    paths.add('code_block.font_name');
+    paths.add('code_block.font_size');
+    paths.add('code_block.background_color');
+  }
+
+  return paths;
+}
+
+// ── Style config editor ────────────────────────────────────────────────────
+
+// ── Theme presets ──────────────────────────────────────────────────────────
+const THEMES = {
+  navy: {
+    name: '클래식 네이비',
+    desc: '전통적인 기업 청색',
+    swatches: ['1F3864', '2E75B6', '44546A'],
+    config: {
+      heading1: { font_size: 20, bold: true,  color: '1F3864', space_before: 240, space_after: 120 },
+      heading2: { font_size: 16, bold: true,  color: '2E75B6', space_before: 200, space_after: 80  },
+      heading3: { font_size: 13, bold: true,  color: '44546A', space_before: 160, space_after: 60  },
+      heading4: { font_size: 12, bold: true,  color: '44546A', space_before: 120, space_after: 40  },
+      heading5: { font_size: 11, bold: true,  color: '595959', space_before: 100, space_after: 30  },
+      heading6: { font_size: 11, bold: false, color: '7F7F7F', space_before: 80,  space_after: 20  },
+      table_header:  { background_color: '2E75B6', font_color: 'FFFFFF', bold: true },
+      table_row_alt: { background_color: 'EBF3FB' },
+      code_block:    { font_name: 'Consolas', font_size: 9, background_color: 'F2F2F2' },
+    },
+  },
+  mono: {
+    name: '모노크롬',
+    desc: '격식 있는 흑백 인쇄용',
+    swatches: ['1A1A1A', '3A3A3A', '2C2C2C'],
+    config: {
+      heading1: { font_size: 20, bold: true,  color: '1A1A1A', space_before: 240, space_after: 120 },
+      heading2: { font_size: 16, bold: true,  color: '2C2C2C', space_before: 200, space_after: 80  },
+      heading3: { font_size: 13, bold: true,  color: '444444', space_before: 160, space_after: 60  },
+      heading4: { font_size: 12, bold: true,  color: '555555', space_before: 120, space_after: 40  },
+      heading5: { font_size: 11, bold: true,  color: '666666', space_before: 100, space_after: 30  },
+      heading6: { font_size: 11, bold: false, color: '888888', space_before: 80,  space_after: 20  },
+      table_header:  { background_color: '2C2C2C', font_color: 'FFFFFF', bold: true },
+      table_row_alt: { background_color: 'F5F5F5' },
+      code_block:    { font_name: 'Consolas', font_size: 9, background_color: 'F0F0F0' },
+    },
+  },
+  green: {
+    name: '포레스트 그린',
+    desc: '안정감 있는 녹색 계열',
+    swatches: ['1B4332', '2D6A4F', '40916C'],
+    config: {
+      heading1: { font_size: 20, bold: true,  color: '1B4332', space_before: 240, space_after: 120 },
+      heading2: { font_size: 16, bold: true,  color: '2D6A4F', space_before: 200, space_after: 80  },
+      heading3: { font_size: 13, bold: true,  color: '40916C', space_before: 160, space_after: 60  },
+      heading4: { font_size: 12, bold: true,  color: '40916C', space_before: 120, space_after: 40  },
+      heading5: { font_size: 11, bold: true,  color: '52B788', space_before: 100, space_after: 30  },
+      heading6: { font_size: 11, bold: false, color: '74C69D', space_before: 80,  space_after: 20  },
+      table_header:  { background_color: '1B4332', font_color: 'FFFFFF', bold: true },
+      table_row_alt: { background_color: 'D8F3DC' },
+      code_block:    { font_name: 'Consolas', font_size: 9, background_color: 'F0F7F3' },
+    },
+  },
+};
+
+const LS_THEME_KEY = 'md2docx_theme';
+
+function loadThemeKey() {
+  try { return localStorage.getItem(LS_THEME_KEY) || 'navy'; } catch (_) { return 'navy'; }
+}
+function saveThemeKey(key) {
+  try { localStorage.setItem(LS_THEME_KEY, key); } catch (_) {}
+}
+
+let currentThemeKey = loadThemeKey();
+
+function applyTheme(key) {
+  const theme = THEMES[key];
+  if (!theme) return;
+  currentThemeKey = key;
+  saveThemeKey(key);
+
+  // 테마 색상·스타일만 덮어쓰고 font_name, font_size_body, page_size, margin 등은 유지
+  for (const [section, vals] of Object.entries(theme.config)) {
+    if (typeof vals === 'object' && currentConfig[section]) {
+      currentConfig[section] = { ...currentConfig[section], ...vals };
+    } else {
+      currentConfig[section] = deepClone(vals);
+    }
+  }
+  saveConfig(currentConfig);
+  renderThemeBar();
+  renderStyleEditor();
+}
+
+function renderThemeBar() {
+  const container = document.getElementById('theme-cards');
+  if (!container) return;
+  container.innerHTML = Object.entries(THEMES).map(([key, theme]) => {
+    const selected = key === currentThemeKey ? ' selected' : '';
+    const swatches = theme.swatches.map(hex =>
+      `<div class="theme-swatch" style="background:#${hex}"></div>`
+    ).join('');
+    return `<div class="theme-card${selected}" data-theme="${key}" title="${theme.desc}">
+      <div class="theme-swatches">${swatches}</div>
+      <div class="theme-name">${theme.name}</div>
+      <div class="theme-desc">${theme.desc}</div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('.theme-card').forEach(card => {
+    card.addEventListener('click', () => applyTheme(card.dataset.theme));
+  });
+}
+
+const KO_SECTION = {
+  __page:        '문서',
+  heading1:      '제목 1 (H1)',
+  heading2:      '제목 2 (H2)',
+  heading3:      '제목 3 (H3)',
+  heading4:      '제목 4 (H4)',
+  heading5:      '제목 5 (H5)',
+  heading6:      '제목 6 (H6)',
+  paragraph:     '본문 단락',
+  code_block:    '코드 블록',
+  table_header:  '표 헤더',
+  table_row_alt: '표 행 (교차)',
+  margin:        '페이지 여백',
+};
+
+const KO_FIELD = {
+  page_size:        '페이지 크기',
+  font_name:        '기본 폰트',
+  font_size_body:   '본문 글자 크기',
+  font_size:        '글자 크기',
+  bold:             '굵게 (Bold)',
+  color:            '글자색',
+  font_color:       '글자색',
+  space_before:     '단락 앞 간격',
+  space_after:      '단락 뒤 간격',
+  line_spacing:     '줄 간격',
+  background_color: '배경색',
+  top:              '위',
+  bottom:           '아래',
+  left:             '왼쪽',
+  right:            '오른쪽',
+};
+
+let styleMode = (() => {
+  try { return localStorage.getItem(LS_MODE_KEY) || 'simple'; } catch (_) { return 'simple'; }
+})();
+
+function saveModePreference() {
+  try { localStorage.setItem(LS_MODE_KEY, styleMode); } catch (_) {}
+}
+
+function formatLabel(key) {
+  return KO_FIELD[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+function sectionLabel(key) {
+  return KO_SECTION[key] || formatLabel(key);
+}
+function isColorKey(key) { return key.includes('color'); }
+function toHtmlColor(hex) { return '#' + String(hex).replace('#', '').padStart(6, '0'); }
+function fromHtmlColor(v) { return v.replace('#', '').toUpperCase(); }
+
+function buildField(path, key, value) {
+  const label = formatLabel(key);
+  const id = 'sf_' + path.replace(/\./g, '_');
+
+  if (key === 'font_name') {
+    return `<div class="field-row"><label>${label}</label>
+      <span class="style-input-readonly">맑은 고딕</span></div>`;
+  }
+  if (key === 'page_size') {
+    return `<div class="field-row"><label for="${id}">${label}</label>
+      <select id="${id}" class="style-input" data-path="${path}">
+        <option value="A4"${value === 'A4' ? ' selected' : ''}>A4</option>
+        <option value="Letter"${value === 'Letter' ? ' selected' : ''}>Letter</option>
+      </select></div>`;
+  }
+  if (isColorKey(key)) {
+    return `<div class="field-row"><label for="${id}">${label}</label>
+      <input id="${id}" type="color" class="style-input" data-path="${path}" value="${toHtmlColor(value)}"></div>`;
+  }
+  // bold 키는 값 타입에 관계없이 항상 체크박스로 렌더링
+  if (key === 'bold' || typeof value === 'boolean') {
+    const checked = value === true || value === 1 || value === 'true';
+    return `<div class="field-row"><label for="${id}">${label}</label>
+      <input id="${id}" type="checkbox" class="style-input" data-path="${path}"${checked ? ' checked' : ''}></div>`;
+  }
+  if (typeof value === 'number') {
+    const step = (value < 5 || key.includes('spacing')) ? '0.01' : '1';
+    return `<div class="field-row"><label for="${id}">${label}</label>
+      <input id="${id}" type="number" class="style-input" data-path="${path}" value="${value}" step="${step}" min="0"></div>`;
+  }
+  return `<div class="field-row"><label for="${id}">${label}</label>
+    <input id="${id}" type="text" class="style-input" data-path="${path}" value="${esc(String(value))}"></div>`;
+}
+
+function buildStyleEditor(cfg) {
+  const simple = styleMode === 'simple';
+  const simplePaths = simple ? getSimplePaths() : null;
+
+  // Group top-level scalars → __page, nested objects → their own section
+  const grouped = {};
+  for (const [key, val] of Object.entries(cfg)) {
+    if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+      grouped[key] = { _fields: val };
+    } else {
+      if (!grouped.__page) grouped.__page = { _fields: {} };
+      grouped.__page._fields[key] = val;
+    }
+  }
+
+  let html = '';
+  for (const [sectionKey, sectionObj] of Object.entries(grouped)) {
+    const label = sectionLabel(sectionKey);
+    let fieldsHtml = '';
+    for (const [fkey, fval] of Object.entries(sectionObj._fields)) {
+      const path = sectionKey === '__page' ? fkey : `${sectionKey}.${fkey}`;
+      if (simple && !simplePaths.has(path)) continue;
+      fieldsHtml += buildField(path, fkey, fval);
+    }
+    if (!fieldsHtml) continue;
+    html += `<div class="style-section"><div class="style-section-title">${label}</div>${fieldsHtml}</div>`;
+  }
+
+  if (!html && simple) {
+    html = '<div class="simple-hint">마크다운 내용을 입력하면<br>사용된 서식에 맞는 설정이 표시됩니다.</div>';
+  }
+
+  return html;
+}
+
+function updateModeButton() {
+  btnMode.textContent = styleMode === 'simple' ? '⚙ 세부 설정' : '← 간편 설정';
+}
+
+function renderStyleEditor() {
+  styleBody.innerHTML = buildStyleEditor(currentConfig);
+  styleBody.querySelectorAll('.style-input').forEach(el => {
+    el.addEventListener('change', onStyleChange);
+    if (el.type === 'color') el.addEventListener('input', onStyleChange);
+  });
+  updateModeButton();
+}
+
+function getNestedRef(obj, path) {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!cur[parts[i]]) cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  return [cur, parts[parts.length - 1]];
+}
+
+function onStyleChange(e) {
+  const el = e.target;
+  const [obj, key] = getNestedRef(currentConfig, el.dataset.path);
+  if      (el.type === 'checkbox') obj[key] = el.checked;
+  else if (el.type === 'color')    obj[key] = fromHtmlColor(el.value);
+  else if (el.type === 'number')   obj[key] = parseFloat(el.value) || 0;
+  else                             obj[key] = el.value;
+  saveConfig(currentConfig);
+}
+
+btnMode.addEventListener('click', () => {
+  styleMode = styleMode === 'simple' ? 'advanced' : 'simple';
+  saveModePreference();
+  renderStyleEditor();
+});
+
+btnReset.addEventListener('click', () => {
+  if (!confirm('모든 스타일 설정을 기본값으로 초기화하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
+  currentConfig = deepClone(DEFAULT_CONFIG);
+  currentThemeKey = 'navy';
+  saveConfig(currentConfig);
+  saveThemeKey(currentThemeKey);
+  renderThemeBar();
+  renderStyleEditor();
+});
+
+// ── 스타일 설정을 미리보기에 반영 ──────────────────────────────────────────
+function applyStyleToPreview() {
+  const cfg = currentConfig;
+  const c   = hex => `#${String(hex || '000000').replace('#', '').padStart(6, '0')}`;
+  let css = '';
+
+  // Headings H1~H6
+  for (let i = 1; i <= 6; i++) {
+    const h = cfg[`heading${i}`] || {};
+    css += `#preview-body h${i} {`;
+    if (h.font_size)              css += ` font-size: ${h.font_size}pt;`;
+    if (h.color)                  css += ` color: ${c(h.color)};`;
+    if (typeof h.bold === 'boolean') css += ` font-weight: ${h.bold ? 700 : 400};`;
+    if (h.space_before)           css += ` margin-top: ${h.space_before / 20}pt;`;
+    if (h.space_after)            css += ` margin-bottom: ${h.space_after / 20}pt;`;
+    css += ' }\n';
+  }
+
+  // Paragraph
+  const par = cfg.paragraph || {};
+  css += `#preview-body p {`;
+  if (par.line_spacing)  css += ` line-height: ${par.line_spacing};`;
+  if (par.space_after)   css += ` margin-bottom: ${par.space_after / 20}pt;`;
+  css += ' }\n';
+
+  // Code block
+  const cb = cfg.code_block || {};
+  css += `#preview-body pre {`;
+  if (cb.background_color) css += ` background: ${c(cb.background_color)};`;
+  css += ' }\n';
+  if (cb.font_name || cb.font_size) {
+    css += `#preview-body pre code {`;
+    if (cb.font_name) css += ` font-family: '${cb.font_name}', 'Consolas', monospace;`;
+    if (cb.font_size) css += ` font-size: ${cb.font_size}pt;`;
+    css += ' }\n';
+  }
+
+  // Table header
+  const th = cfg.table_header || {};
+  css += `#preview-body th {`;
+  if (th.background_color) css += ` background: ${c(th.background_color)};`;
+  if (th.font_color)       css += ` color: ${c(th.font_color)};`;
+  if (typeof th.bold === 'boolean') css += ` font-weight: ${th.bold ? 700 : 400};`;
+  css += ' }\n';
+
+  // Table alt row
+  const tra = cfg.table_row_alt || {};
+  if (tra.background_color) {
+    css += `#preview-body tr:nth-child(even) td { background: ${c(tra.background_color)}; }\n`;
+  }
+
+  // Font
+  if (cfg.font_name) {
+    css += `#preview-body { font-family: '${cfg.font_name}', 'Malgun Gothic', sans-serif; }\n`;
+  }
+  if (cfg.font_size_body) {
+    css += `#preview-body p, #preview-body li { font-size: ${cfg.font_size_body}pt; }\n`;
+  }
+
+  dynStyle.textContent = css;
+}
+
+btnApply.addEventListener('click', applyStyleToPreview);
+
+// ── Initial render ─────────────────────────────────────────────────────────
+renderThemeBar();
+renderStyleEditor();
+applyStyleToPreview();
+</script>
+</body>
+</html>

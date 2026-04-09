@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(grep -E \"\\\\.\\(py|html\\)$\")",
+      "Bash(.venv/Scripts/python -c \"import docx; print\\(docx.__version__\\)\")",
+      "Bash(.venv/Scripts/python -c ':*)",
+      "Bash(ls C:/workspace/md2docx/*.bat C:/workspace/md2docx/*.sh C:/workspace/md2docx/*.spec)",
+      "Bash(r)",
+      "Bash(powershell -Command ':*)",
+      "Bash(powershell:*)"
+    ]
+  }
+}

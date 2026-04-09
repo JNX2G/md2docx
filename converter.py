@@ -119,16 +119,6 @@ def _para_left_border(para, color: str = "2E75B6", sz: str = "24"):
     pPr.append(pBdr)
 
 
-def _remove_numbering(para) -> None:
-    """Remove any automatic bullet/numbering (w:numPr) from a paragraph.
-
-    python-docx may inherit numPr through style chains even when 'Normal'
-    is requested.  Explicitly deleting the element is the only safe way to
-    guarantee no bullet or number character is rendered by Word.
-    """
-    pPr = para._p.get_or_add_pPr()
-    for num_pr in pPr.findall(qn("w:numPr")):
-        pPr.remove(num_pr)
 
 
 def _para_bottom_border(para, color: str = "AAAAAA", sz: str = "6"):
@@ -466,7 +456,6 @@ class DocxConverter:
                 self._list_item(item, level, ordered)
 
     def _list_item(self, token: Dict, level: int, ordered: bool):
-        show_bullet = self.style.get("show_bullet_symbol", False)
         bullet_styles  = ["List Bullet",  "List Bullet 2",  "List Bullet 3"]
         number_styles  = ["List Number",  "List Number 2",  "List Number 3"]
         style_name = (number_styles if ordered else bullet_styles)[min(level, 2)]
@@ -479,16 +468,11 @@ class DocxConverter:
             ct = child.get("type")
             # mistune 3.x uses "block_text" for tight lists, "paragraph" for loose lists
             if ct in ("paragraph", "block_text") and not text_para_done:
-                if show_bullet:
-                    try:
-                        para = self.doc.add_paragraph(style=style_name)
-                    except Exception:
-                        para = self.doc.add_paragraph(style="Normal")
-                        para.paragraph_format.left_indent = Twips(360 * (level + 1))
-                else:
+                try:
+                    para = self.doc.add_paragraph(style=style_name)
+                except Exception:
                     para = self.doc.add_paragraph(style="Normal")
                     para.paragraph_format.left_indent = Twips(360 * (level + 1))
-                    _remove_numbering(para)
                 self._inline(para, child.get("children", []))
                 for run in para.runs:
                     if not run.font.name:
@@ -498,16 +482,10 @@ class DocxConverter:
                 text_para_done = True
             elif ct == "list":
                 if not text_para_done:
-                    # Empty list item — add placeholder
-                    if show_bullet:
-                        try:
-                            para = self.doc.add_paragraph(style=style_name)
-                        except Exception:
-                            para = self.doc.add_paragraph(style="Normal")
-                    else:
+                    try:
+                        para = self.doc.add_paragraph(style=style_name)
+                    except Exception:
                         para = self.doc.add_paragraph(style="Normal")
-                        para.paragraph_format.left_indent = Twips(360 * (level + 1))
-                        _remove_numbering(para)
                     text_para_done = True
                 self._list(child, level=level + 1)
             elif ct == "block_code":
@@ -743,7 +721,7 @@ DEFAULT_STYLE: Dict = {
     "page_size": "A4",
     "font_name": "Malgun Gothic",
     "font_size_body": 11,
-    "show_bullet_symbol": True,
+
     "heading1": {"font_size": 20, "bold": True,  "color": "1F3864", "space_before": 240, "space_after": 120},
     "heading2": {"font_size": 16, "bold": True,  "color": "2E75B6", "space_before": 200, "space_after": 80},
     "heading3": {"font_size": 13, "bold": True,  "color": "44546A", "space_before": 160, "space_after": 60},

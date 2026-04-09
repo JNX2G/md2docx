@@ -512,10 +512,6 @@ select.style-input { cursor: pointer; }
       <input type="checkbox" id="chk-hyperlink" checked>
       하이퍼링크 포함
     </label>
-    <label class="ctrl-label">
-      <input type="checkbox" id="chk-bullet" checked>
-      글머리 기호 포함 (미 체크시 들여쓰기로 구분)
-    </label>
     <div class="spacer"></div>
     <button class="btn btn-ghost" id="btn-style-toggle">◧ 스타일 설정</button>
     <div class="spinner" id="spinner" style="display:none"></div>
@@ -617,7 +613,6 @@ const DEFAULT_CONFIG = {
 };
 
 const LS_KEY           = 'md2docx_style_v2';
-const LS_BULLET_KEY    = 'md2docx_bullet';
 const LS_HYPERLINK_KEY = 'md2docx_hyperlink';
 
 function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
@@ -648,12 +643,7 @@ function saveConfig(cfg) {
 
 let currentConfig = loadConfig();
 
-function loadBullet() {
-  try { const v = localStorage.getItem(LS_BULLET_KEY); return v === null ? true : v === 'true'; } catch (_) { return true; }
-}
-function saveBullet(v) {
-  try { localStorage.setItem(LS_BULLET_KEY, v ? 'true' : 'false'); } catch (_) {}
-}
+
 function loadHyperlink() {
   try { const v = localStorage.getItem(LS_HYPERLINK_KEY); return v === null ? true : v === 'true'; } catch (_) { return true; }
 }
@@ -678,9 +668,6 @@ const btnStyleClose  = document.getElementById('btn-style-close');
 const styleDrawer   = document.getElementById('style-drawer');
 const styleOverlay  = document.getElementById('style-overlay');
 const chkMermaid    = document.getElementById('chk-mermaid');
-const chkBullet     = document.getElementById('chk-bullet');
-chkBullet.checked = loadBullet();
-chkBullet.addEventListener('change', () => saveBullet(chkBullet.checked));
 
 const chkHyperlink  = document.getElementById('chk-hyperlink');
 chkHyperlink.checked = loadHyperlink();
@@ -825,7 +812,7 @@ async function triggerConvert() {
 
   const fd = new FormData();
   fd.append('markdown', md);
-  fd.append('style_config', JSON.stringify({...currentConfig, show_bullet_symbol: chkBullet.checked, include_hyperlink: chkHyperlink.checked}));
+  fd.append('style_config', JSON.stringify({...currentConfig, include_hyperlink: chkHyperlink.checked}));
   fd.append('include_mermaid', chkMermaid.checked ? 'true' : 'false');
 
   try {

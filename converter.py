@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 import mistune
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor, Twips
@@ -163,10 +164,28 @@ class DocxConverter:
 
     # ── Public entry point ────────────────────────────────────────────────────
 
+    @staticmethod
+    def _split_restarting_lists(text: str) -> str:
+        """Insert an empty HTML comment between consecutive ordered lists that
+        restart at 1, so mistune parses them as separate list tokens.
+
+        CommonMark merges ordered lists separated by blank lines into one list
+        when they share the same delimiter character.  By injecting <!-- --> the
+        parser encounters a block_html token between them and emits two distinct
+        list tokens, enabling per-list numbering restart.
+        """
+        return re.sub(
+            r'(\d+[.)][^\n]*\n)(\n+)([ \t]*1[.)]\s)',
+            r'\1\2<!-- -->\n\n\3',
+            text,
+        )
+
     def convert(self, markdown_text: str) -> Tuple[bytes, Dict[str, bytes]]:
         self._setup_page()
+        if self.style.get("page_numbers", False):
+            self._add_footer_page_numbers()
         md = mistune.create_markdown(renderer="ast", plugins=["strikethrough", "table"])
-        tokens = md(markdown_text)
+        tokens = md(self._split_restarting_lists(markdown_text))
         for token in tokens:
             self._block(token)
         buf = io.BytesIO()
@@ -222,6 +241,66 @@ class DocxConverter:
         section.left_margin   = Twips(m.get("left",   1440))
         section.right_margin  = Twips(m.get("right",  1440))
         self._patch_doc_defaults()
+
+    def _add_footer_page_numbers(self):
+        """Add a footer with centered -N- page numbers."""
+        section = self.doc.sections[0]
+        footer = section.footer
+        footer.is_linked_to_previous = False
+
+        # Use existing first paragraph or clear it
+        if footer.paragraphs:
+            para = footer.paragraphs[0]
+            para.clear()
+        else:
+            para = footer.add_paragraph()
+
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        fn = self.style.get("font_name", "Malgun Gothic")
+        fs = self.style.get("font_size_body", 11)
+
+        def _make_run(text: str):
+            r = OxmlElement("w:r")
+            rPr = OxmlElement("w:rPr")
+            rFonts = OxmlElement("w:rFonts")
+            rFonts.set(qn("w:ascii"),    fn)
+            rFonts.set(qn("w:hAnsi"),    fn)
+            rFonts.set(qn("w:eastAsia"), fn)
+            rPr.append(rFonts)
+            sz = OxmlElement("w:sz")
+            sz.set(qn("w:val"), str(int(fs * 2)))
+            rPr.append(sz)
+            r.append(rPr)
+            t = OxmlElement("w:t")
+            t.text = text
+            t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            r.append(t)
+            return r
+
+        # - ‹PAGE› -  using field code
+        para._p.append(_make_run("- "))
+
+        r_begin = OxmlElement("w:r")
+        fldChar_begin = OxmlElement("w:fldChar")
+        fldChar_begin.set(qn("w:fldCharType"), "begin")
+        r_begin.append(fldChar_begin)
+        para._p.append(r_begin)
+
+        r_instr = OxmlElement("w:r")
+        instrText = OxmlElement("w:instrText")
+        instrText.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        instrText.text = " PAGE "
+        r_instr.append(instrText)
+        para._p.append(r_instr)
+
+        r_end = OxmlElement("w:r")
+        fldChar_end = OxmlElement("w:fldChar")
+        fldChar_end.set(qn("w:fldCharType"), "end")
+        r_end.append(fldChar_end)
+        para._p.append(r_end)
+
+        para._p.append(_make_run(" -"))
 
     def _patch_doc_defaults(self):
         """Patch document-level defaults to ensure correct Korean font rendering.
@@ -449,13 +528,110 @@ class DocxConverter:
 
     # ── Lists ─────────────────────────────────────────────────────────────────
 
+    def _restart_list_numbering(self, para) -> None:
+        """Force this numbered list paragraph to restart counting at 1.
+
+        List Number style stores numPr in the *style definition*, not in the
+        paragraph's own pPr.  We therefore look up the numId from the style,
+        create a new w:num with w:lvlOverride/w:startOverride, and write an
+        explicit numPr onto the paragraph so Word uses the new numId.
+        """
+        # ── 1. Resolve numId: paragraph pPr first, then style definition ──────
+        cur_numId = None
+
+        p = para._p
+        pPr = p.find(qn("w:pPr"))
+        if pPr is not None:
+            numPr = pPr.find(qn("w:numPr"))
+            if numPr is not None:
+                numId_e = numPr.find(qn("w:numId"))
+                if numId_e is not None:
+                    v = int(numId_e.get(qn("w:val"), 0))
+                    if v:
+                        cur_numId = v
+
+        if cur_numId is None:
+            # Look up numId from the paragraph's style definition
+            style_name = para.style.name if para.style else None
+            if style_name:
+                for st in self.doc.styles._element.findall(qn("w:style")):
+                    name_e = st.find(qn("w:name"))
+                    if name_e is not None and name_e.get(qn("w:val")) == style_name:
+                        pPr_st = st.find(qn("w:pPr"))
+                        if pPr_st is not None:
+                            numPr_st = pPr_st.find(qn("w:numPr"))
+                            if numPr_st is not None:
+                                numId_st = numPr_st.find(qn("w:numId"))
+                                if numId_st is not None:
+                                    v = int(numId_st.get(qn("w:val"), 0))
+                                    if v:
+                                        cur_numId = v
+                        break
+
+        if cur_numId is None:
+            return
+
+        # ── 2. Resolve abstractNumId from the numbering part ─────────────────
+        try:
+            numbering_part = para.part.numbering_part
+        except Exception:
+            return
+
+        numbering = numbering_part._element
+        abstract_num_id = None
+        for num in numbering.findall(qn("w:num")):
+            if int(num.get(qn("w:numId"), 0)) == cur_numId:
+                abs_ref = num.find(qn("w:abstractNumId"))
+                if abs_ref is not None:
+                    abstract_num_id = abs_ref.get(qn("w:val"))
+                break
+
+        if abstract_num_id is None:
+            return
+
+        # ── 3. Create a new w:num with startOverride = 1 ─────────────────────
+        existing = [int(n.get(qn("w:numId"), 0)) for n in numbering.findall(qn("w:num"))]
+        new_num_id = max(existing, default=0) + 1
+
+        new_num = OxmlElement("w:num")
+        new_num.set(qn("w:numId"), str(new_num_id))
+        abs_elem = OxmlElement("w:abstractNumId")
+        abs_elem.set(qn("w:val"), abstract_num_id)
+        new_num.append(abs_elem)
+        lvl_override = OxmlElement("w:lvlOverride")
+        lvl_override.set(qn("w:ilvl"), "0")
+        start_override = OxmlElement("w:startOverride")
+        start_override.set(qn("w:val"), "1")
+        lvl_override.append(start_override)
+        new_num.append(lvl_override)
+        numbering.append(new_num)
+
+        # ── 4. Write explicit numPr onto the paragraph ────────────────────────
+        if pPr is None:
+            pPr = OxmlElement("w:pPr")
+            p.insert(0, pPr)
+        for old in pPr.findall(qn("w:numPr")):
+            pPr.remove(old)
+        numPr_new = OxmlElement("w:numPr")
+        ilvl_e = OxmlElement("w:ilvl")
+        ilvl_e.set(qn("w:val"), "0")
+        numPr_new.append(ilvl_e)
+        numId_new = OxmlElement("w:numId")
+        numId_new.set(qn("w:val"), str(new_num_id))
+        numPr_new.append(numId_new)
+        pPr.append(numPr_new)
+
     def _list(self, token: Dict, level: int):
         ordered = (token.get("attrs") or {}).get("ordered", False)
+        first = True
         for item in token.get("children", []):
             if item.get("type") == "list_item":
-                self._list_item(item, level, ordered)
+                # Restart numbering for the first item of every top-level ordered list
+                restart = ordered and level == 0 and first
+                self._list_item(item, level, ordered, restart=restart)
+                first = False
 
-    def _list_item(self, token: Dict, level: int, ordered: bool):
+    def _list_item(self, token: Dict, level: int, ordered: bool, restart: bool = False):
         bullet_styles  = ["List Bullet",  "List Bullet 2",  "List Bullet 3"]
         number_styles  = ["List Number",  "List Number 2",  "List Number 3"]
         style_name = (number_styles if ordered else bullet_styles)[min(level, 2)]
@@ -463,6 +639,7 @@ class DocxConverter:
         fn = self.style.get("font_name", "Malgun Gothic")
         fs = self.style.get("font_size_body", 11)
         text_para_done = False
+        _restarted = False
 
         for child in token.get("children", []):
             ct = child.get("type")
@@ -473,6 +650,9 @@ class DocxConverter:
                 except Exception:
                     para = self.doc.add_paragraph(style="Normal")
                     para.paragraph_format.left_indent = Twips(360 * (level + 1))
+                if restart and not _restarted:
+                    self._restart_list_numbering(para)
+                    _restarted = True
                 self._inline(para, child.get("children", []))
                 for run in para.runs:
                     if not run.font.name:
@@ -486,6 +666,9 @@ class DocxConverter:
                         para = self.doc.add_paragraph(style=style_name)
                     except Exception:
                         para = self.doc.add_paragraph(style="Normal")
+                    if restart and not _restarted:
+                        self._restart_list_numbering(para)
+                        _restarted = True
                     text_para_done = True
                 self._list(child, level=level + 1)
             elif ct == "block_code":
@@ -735,6 +918,7 @@ DEFAULT_STYLE: Dict = {
     "table_header": {"background_color": "2E75B6", "font_color": "FFFFFF", "bold": True},
     "table_row_alt": {"background_color": "EBF3FB"},
     "margin": {"top": 1440, "bottom": 1440, "left": 1440, "right": 1440},
+    "page_numbers": False,
 }
 
 

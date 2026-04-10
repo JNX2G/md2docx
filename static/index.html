@@ -157,6 +157,23 @@ html, body {
   color: #4a5568;
 }
 
+/* ── Drag & drop overlay ─────────────────────────────────────────────────── */
+#input-panel { position: relative; }
+#drop-overlay {
+  display: none;
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(46, 117, 182, 0.08);
+  border: 3px dashed #2E75B6;
+  border-radius: 4px;
+  pointer-events: none;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 10px;
+  color: #2E75B6;
+  font-size: 15px; font-weight: 600;
+}
+#input-panel.drag-over #drop-overlay { display: flex; }
+
 /* ── Left panel: Markdown input ─────────────────────────────────────────── */
 #md-input {
   flex: 1; resize: none; border: none; outline: none;
@@ -512,6 +529,10 @@ select.style-input { cursor: pointer; }
       <input type="checkbox" id="chk-hyperlink" checked>
       하이퍼링크 포함
     </label>
+    <label class="ctrl-label">
+      <input type="checkbox" id="chk-pagenum" checked>
+      페이지 번호
+    </label>
     <div class="sep"></div>
     <button class="btn btn-ghost" id="btn-style-toggle">◧ 스타일 설정</button>
     <div class="spinner" id="spinner" style="display:none"></div>
@@ -529,7 +550,11 @@ select.style-input { cursor: pointer; }
   <div id="columns">
 
     <!-- Left: Markdown input -->
-    <div class="panel">
+    <div class="panel" id="input-panel">
+      <div id="drop-overlay">
+        <span style="font-size:32px">📄</span>
+        MD 파일을 여기에 놓으세요
+      </div>
       <div class="panel-header">
         마크다운 입력
         <label id="btn-upload" title=".md / .txt 파일 불러오기">
@@ -651,6 +676,14 @@ function saveHyperlink(v) {
   try { localStorage.setItem(LS_HYPERLINK_KEY, v ? 'true' : 'false'); } catch (_) {}
 }
 
+const LS_PAGENUM_KEY = 'md2docx_pagenum_v2';
+function loadPageNum() {
+  try { const v = localStorage.getItem(LS_PAGENUM_KEY); return v === null ? true : v === 'true'; } catch (_) { return true; }
+}
+function savePageNum(v) {
+  try { localStorage.setItem(LS_PAGENUM_KEY, v ? 'true' : 'false'); } catch (_) {}
+}
+
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const mdInput       = document.getElementById('md-input');
 const charCount     = document.getElementById('char-count');
@@ -672,6 +705,10 @@ const chkMermaid    = document.getElementById('chk-mermaid');
 const chkHyperlink  = document.getElementById('chk-hyperlink');
 chkHyperlink.checked = loadHyperlink();
 chkHyperlink.addEventListener('change', () => saveHyperlink(chkHyperlink.checked));
+
+const chkPageNum    = document.getElementById('chk-pagenum');
+chkPageNum.checked = loadPageNum();
+chkPageNum.addEventListener('change', () => savePageNum(chkPageNum.checked));
 
 const fileInput     = document.getElementById('file-input');
 const progressWrap  = document.getElementById('progress-wrap');
@@ -699,9 +736,14 @@ styleOverlay.addEventListener('click', closeDrawer);
 // ── File upload ────────────────────────────────────────────────────────────
 let uploadedBasename = '';
 
-fileInput.addEventListener('change', () => {
-  const file = fileInput.files[0];
+function loadFile(file) {
   if (!file) return;
+  const allowed = ['.md', '.markdown', '.txt'];
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  if (!allowed.includes(ext)) {
+    showError('지원하지 않는 파일 형식입니다. (.md, .markdown, .txt 만 가능)');
+    return;
+  }
   uploadedBasename = file.name.replace(/\.[^.]+$/, '');
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -712,7 +754,41 @@ fileInput.addEventListener('change', () => {
   };
   reader.onerror = () => showError('파일 읽기 실패: ' + file.name);
   reader.readAsText(file, 'UTF-8');
+}
+
+fileInput.addEventListener('change', () => {
+  loadFile(fileInput.files[0]);
   fileInput.value = '';
+});
+
+// ── Drag & drop ────────────────────────────────────────────────────────────
+const inputPanel = document.getElementById('input-panel');
+let dragCounter = 0;
+
+inputPanel.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dragCounter++;
+  inputPanel.classList.add('drag-over');
+});
+
+inputPanel.addEventListener('dragover', (e) => {
+  e.preventDefault();
+});
+
+inputPanel.addEventListener('dragleave', () => {
+  dragCounter--;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    inputPanel.classList.remove('drag-over');
+  }
+});
+
+inputPanel.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  inputPanel.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  loadFile(file);
 });
 
 // ── Error / spinner helpers ────────────────────────────────────────────────
@@ -812,7 +888,7 @@ async function triggerConvert() {
 
   const fd = new FormData();
   fd.append('markdown', md);
-  fd.append('style_config', JSON.stringify({...currentConfig, include_hyperlink: chkHyperlink.checked}));
+  fd.append('style_config', JSON.stringify({...currentConfig, include_hyperlink: chkHyperlink.checked, page_numbers: chkPageNum.checked}));
   fd.append('include_mermaid', chkMermaid.checked ? 'true' : 'false');
 
   try {
@@ -1016,7 +1092,7 @@ const THEMES = {
       heading5: { font_size: 11, bold: true,  color: '52B788', space_before: 100, space_after: 30  },
       heading6: { font_size: 11, bold: false, color: '74C69D', space_before: 80,  space_after: 20  },
       table_header:  { background_color: '1B4332', font_color: 'FFFFFF', bold: true },
-      table_row_alt: { background_color: 'D8F3DC' },
+      table_row_alt: { background_color: 'E8EDE9' },
       code_block:    { font_name: 'Consolas', font_size: 9, background_color: 'F0F7F3' },
     },
   },
